@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BRVM Live - Cours des actions</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #ffffff;
+      color: #1a1a1a;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 300;
+      letter-spacing: -0.5px;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 0.9rem;
+    }
+
+    .search-box {
+      margin-bottom: 2rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    input {
+      padding: 0.75rem 1rem;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 1rem;
+      width: 300px;
+      transition: border-color 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #1a1a1a;
+    }
+
+    button {
+      padding: 0.75rem 1.5rem;
+      background: #1a1a1a;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #333;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .actions button {
+      background: #f5f5f5;
+      color: #1a1a1a;
+    }
+
+    .actions button:hover {
+      background: #e0e0e0;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: #888;
+    }
+
+    .error {
+      background: #fff5f5;
+      color: #c53030;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+    }
+
+    .info {
+      background: #f7fafc;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 1rem;
+      font-weight: 500;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid #f5f5f5;
+    }
+
+    tr:hover td {
+      background: #fafafa;
+    }
+
+    .positive {
+      color: #27ae60;
+    }
+
+    .negative {
+      color: #c53030;
+    }
+
+    .symbole {
+      font-weight: 500;
+      color: #1a1a1a;
+    }
+
+    .nom {
+      color: #666;
+    }
+
+    .number {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+
+      input {
+        width: 100%;
+      }
+
+      .search-box {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      table {
+        font-size: 0.85rem;
+      }
+
+      th, td {
+        padding: 0.75rem 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>BRVM Live</h1>
+      <p class="subtitle">Cours des actions de la Bourse Régionale des Valeurs Mobilières</p>
+    </header>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Rechercher par symbole (ex: ONTBF)">
+      <button onclick="searchSymbol()">Rechercher</button>
+      <div class="actions">
+        <button onclick="loadAll()">Tous</button>
+        <button onclick="exportCSV()">CSV</button>
+      </div>
+    </div>
+
+    <div id="info" class="info"></div>
+    <div id="error" class="error" style="display: none;"></div>
+    <div id="loading" class="loading" style="display: none;">Chargement...</div>
+    <div id="content"></div>
+  </div>
+
+  <script>
+    const API_URL = '/api/cours';
+
+    async function loadData(url = API_URL) {
+      const loading = document.getElementById('loading');
+      const error = document.getElementById('error');
+      const content = document.getElementById('content');
+      const info = document.getElementById('info');
+
+      loading.style.display = 'block';
+      error.style.display = 'none';
+      content.innerHTML = '';
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        loading.style.display = 'none';
+
+        if (data.erreur) {
+          error.textContent = data.erreur;
+          error.style.display = 'block';
+          return;
+        }
+
+        if (data.maj) {
+          info.textContent = `Dernière mise à jour: ${data.maj} | ${data.nombre} actions`;
+        }
+
+        if (data.actions && data.actions.length > 0) {
+          renderTable(data.actions);
+        } else {
+          content.innerHTML = '<p style="text-align: center; color: #888;">Aucune donnée disponible</p>';
+        }
+      } catch (err) {
+        loading.style.display = 'none';
+        error.textContent = 'Erreur de chargement des données';
+        error.style.display = 'block';
+      }
+    }
+
+    function renderTable(actions) {
+      const content = document.getElementById('content');
+      
+      const html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Symbole</th>
+              <th>Nom</th>
+              <th>Volume</th>
+              <th>Cours veille</th>
+              <th>Ouverture</th>
+              <th>Clôture</th>
+              <th>Variation</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${actions.map(action => `
+              <tr>
+                <td class="symbole">${action.symbole}</td>
+                <td class="nom">${action.nom}</td>
+                <td class="number">${formatNumber(action.volume)}</td>
+                <td class="number">${formatNumber(action.cours_veille)}</td>
+                <td class="number">${formatNumber(action.ouverture)}</td>
+                <td class="number">${formatNumber(action.cloture)}</td>
+                <td class="number ${action.variation_pct >= 0 ? 'positive' : 'negative'}">
+                  ${formatNumber(action.variation_pct)}%
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      
+      content.innerHTML = html;
+    }
+
+    function formatNumber(num) {
+      if (num === null || num === undefined) return '-';
+      return num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function searchSymbol() {
+      const input = document.getElementById('searchInput');
+      const symbole = input.value.trim().toUpperCase();
+      if (symbole) {
+        loadData(`${API_URL}?symbole=${symbole}`);
+      }
+    }
+
+    function loadAll() {
+      document.getElementById('searchInput').value = '';
+      loadData(API_URL);
+    }
+
+    function exportCSV() {
+      window.open(`${API_URL}?format=csv`, '_blank');
+    }
+
+    // Charger toutes les actions au démarrage
+    loadData();
+
+    // Recherche sur Entrée
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        searchSymbol();
+      }
+    });
+  </script>
+</body>
+</html>
