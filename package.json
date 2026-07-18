@@ -1,0 +1,8 @@
+{
+  "name": "brvm-live",
+  "version": "1.0.0",
+  "description": "API de cours BRVM (scraping poli du site officiel brvm.org) pour Vercel",
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  }
+}
