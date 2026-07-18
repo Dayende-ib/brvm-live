@@ -81,7 +81,7 @@ async function scrape() {
 // Cache en mémoire du conteneur serverless (persiste entre invocations "chaudes")
 let cache = { at: 0, data: null };
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Security headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
 }
 
 // Export interne pour les tests
-export function _scrapeHtml(html) {
+module.exports._scrapeHtml = function (html) {
   const $ = cheerio.load(html);
   let best = null;
   $('table').each((_, t) => {
