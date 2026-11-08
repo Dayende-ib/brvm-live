@@ -3,10 +3,20 @@
   "version": "1.0.0",
   "description": "API de cours BRVM (scraping poli du site officiel brvm.org) pour Vercel",
   "scripts": {
+    "start": "node server.js",
     "audit": "npm audit",
     "audit:fix": "npm audit fix"
   },
   "dependencies": {
-    "cheerio": "^1.0.0"
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.6",
+    "express": "^4.22.3",
+    "express-rate-limit": "^8.7.3",
+    "helmet": "^8.3.0",
+    "winston": "^3.19.0",
+    "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
