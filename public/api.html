@@ -29,12 +29,16 @@
         <a href="/api.html" aria-current="page">API</a>
       </nav>
 
-      <div class="topbar-meta">
-        <a class="btn btn-ghost" href="/api/cours" target="_blank" rel="noopener">
+      <div class="topbar-actions">
+        <div class="topbar-auth" data-auth-area>
+          <a class="btn btn-ghost btn-sm" href="/connexion">Connexion</a>
+          <a class="btn btn-sm" href="/inscription">Créer un compte</a>
+        </div>
+        <a class="btn btn-ghost btn-icon-text" href="/api/cours" target="_blank" rel="noopener">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
             <path d="M7 3H4v13h13v-3M11 3h6v6M17 3l-7 7" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
           </svg>
-          Tester l’API
+          <span class="btn-label">Tester l’API</span>
         </a>
       </div>
     </div>
@@ -457,6 +461,7 @@ ABJC,"SERVAIR ABIDJAN COTE D'IVOIRE",3026,3395,3400,3400,0.15</code></pre>
   </main>
 
   <span id="copy-status" class="visually-hidden" role="status" aria-live="polite"></span>
+  <script src="/session.js" defer></script>
   <script src="/api.js" defer></script>
 </body>
 </html>

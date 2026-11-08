@@ -18,7 +18,12 @@
     sortDir: 'asc',
     loadedAt: null,
     loading: false,
-    stale: false
+    stale: false,
+    authenticated: false,
+    favorites: new Set(),
+    favoritesOnly: false,
+    csrfToken: null,
+    favoriteBusy: false
   };
 
   const $ = (id) => document.getElementById(id);
@@ -133,6 +138,33 @@
     return cell;
   }
 
+  function createSymbolCell(action) {
+    const cell = document.createElement('td');
+    cell.className = 'symbole';
+
+    const isFavorite = state.favorites.has(action.symbole);
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'star-btn';
+    star.dataset.symbole = action.symbole;
+    star.textContent = isFavorite ? '★' : '☆';
+    star.setAttribute('aria-pressed', String(isFavorite));
+    star.setAttribute(
+      'aria-label',
+      `${isFavorite ? 'Retirer' : 'Ajouter'} ${action.symbole} ${
+        isFavorite ? 'des' : 'aux'
+      } favoris`
+    );
+    star.title = isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris';
+    star.addEventListener('click', () => toggleFavorite(action.symbole));
+
+    const label = document.createElement('span');
+    label.textContent = action.symbole;
+
+    cell.append(star, label);
+    return cell;
+  }
+
   function createVariationCell(value) {
     const cell = document.createElement('td');
     cell.className = 'numeric';
@@ -168,7 +200,7 @@
     for (const action of state.filtered) {
       const row = document.createElement('tr');
       row.append(
-        createCell(action.symbole, 'symbole'),
+        createSymbolCell(action),
         createCell(action.nom, 'nom'),
         createCell(formatVolume(action.volume), 'numeric'),
         createCell(formatNumber(action.cours_veille), 'numeric'),
@@ -199,6 +231,7 @@
   function applyFilter() {
     const query = normalize($('search').value);
     state.filtered = state.actions.filter((action) => {
+      if (state.favoritesOnly && !state.favorites.has(action.symbole)) return false;
       if (!query) return true;
       return normalize(action.symbole).includes(query) || normalize(action.nom).includes(query);
     });
@@ -208,9 +241,16 @@
     updateSortIndicators();
 
     const count = state.filtered.length;
-    $('result-count').textContent = query
-      ? `${count} résultat${count > 1 ? 's' : ''} sur ${state.actions.length}`
-      : `${state.actions.length} action${state.actions.length > 1 ? 's' : ''}`;
+    if (state.favoritesOnly) {
+      $('result-count').textContent = `${count} favori${count > 1 ? 's' : ''} sur ${state.actions.length}`;
+    } else {
+      $('result-count').textContent = query
+        ? `${count} résultat${count > 1 ? 's' : ''} sur ${state.actions.length}`
+        : `${state.actions.length} action${state.actions.length > 1 ? 's' : ''}`;
+    }
+    $('empty').textContent = state.favoritesOnly
+      ? 'Aucune action favorite ne correspond. Cliquez sur une étoile pour en ajouter.'
+      : 'Aucune action ne correspond à cette recherche.';
     $('empty').hidden = count !== 0;
     $('clear-search').hidden = !query;
   }
@@ -291,6 +331,91 @@
     }
   }
 
+  function updateFavoritesUI() {
+    const button = $('favorites-filter');
+    const count = $('favorites-count');
+    if (!button) return;
+
+    button.hidden = !state.authenticated;
+    button.setAttribute('aria-pressed', String(state.favoritesOnly));
+    button.classList.toggle('is-active', state.favoritesOnly);
+
+    if (count) {
+      count.hidden = state.favorites.size === 0;
+      count.textContent = String(state.favorites.size);
+    }
+  }
+
+  function applySession(session) {
+    state.authenticated = Boolean(session?.authentifie);
+    state.favorites = new Set(Array.isArray(session?.favoris) ? session.favoris : []);
+    state.csrfToken = session?.csrf_token || null;
+
+    if (!state.authenticated) state.favoritesOnly = false;
+
+    updateFavoritesUI();
+    if (state.actions.length > 0) applyFilter();
+  }
+
+  async function loadSession() {
+    try {
+      const session = window.brvmSessionReady
+        ? await window.brvmSessionReady
+        : await fetch('/api/session', { headers: { Accept: 'application/json' } }).then((response) =>
+            response.ok ? response.json() : null
+          );
+      if (session) applySession(session);
+    } catch {
+      // Session indisponible : le site reste utilisable en lecture seule.
+    }
+  }
+
+  function requireLogin() {
+    window.location.href = `/connexion?next=${encodeURIComponent('/')}`;
+  }
+
+  async function toggleFavorite(symbole) {
+    if (!state.authenticated) {
+      requireLogin();
+      return;
+    }
+    if (state.favoriteBusy || !state.csrfToken) return;
+
+    state.favoriteBusy = true;
+    try {
+      const response = await fetch('/api/favoris', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': state.csrfToken
+        },
+        body: JSON.stringify({ symbole })
+      });
+      const data = await response.json().catch(() => null);
+
+      if (response.status === 401) {
+        requireLogin();
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(data?.erreur || `erreur HTTP ${response.status}`);
+      }
+
+      state.favorites = new Set(Array.isArray(data.favoris) ? data.favoris : []);
+      updateFavoritesUI();
+      applyFilter();
+    } catch (error) {
+      showAlert(`Impossible de mettre à jour les favoris : ${error.message}.`);
+    } finally {
+      state.favoriteBusy = false;
+    }
+  }
+
+  window.addEventListener('brvm:session', (event) => {
+    applySession(event.detail);
+  });
+
   let searchTimer;
   $('search').addEventListener('input', () => {
     clearTimeout(searchTimer);
@@ -325,6 +450,16 @@
 
   $('refresh').addEventListener('click', () => loadData());
 
+  $('favorites-filter').addEventListener('click', () => {
+    if (!state.authenticated) {
+      requireLogin();
+      return;
+    }
+    state.favoritesOnly = !state.favoritesOnly;
+    updateFavoritesUI();
+    applyFilter();
+  });
+
   setInterval(() => {
     if (document.visibilityState === 'visible') loadData({ silent: true });
   }, REFRESH_MS);
@@ -342,4 +477,5 @@
   setStatus('loading', 'Chargement…');
   loadData();
   loadVisits();
+  loadSession();
 })();

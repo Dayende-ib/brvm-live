@@ -20,6 +20,24 @@ const MIGRATIONS = [
   );
   CREATE INDEX idx_visits_day ON visits(day);
   CREATE INDEX idx_visits_day_hash ON visits(day, visitor_hash);
+  `,
+  `
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_login_at INTEGER
+  );
+  CREATE TABLE favorites (
+    user_id INTEGER NOT NULL,
+    symbole TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, symbole),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX idx_favorites_user ON favorites(user_id);
   `
 ];
 
@@ -78,6 +96,24 @@ function openDatabase(dataDir, logger) {
       ORDER BY day ASC
     `),
     deleteVisitsBefore: db.prepare('DELETE FROM visits WHERE day < ?'),
+    insertUser: db.prepare(
+      'INSERT INTO users (username, email, password_hash, created_at) VALUES (?, ?, ?, ?)'
+    ),
+    findUserByLogin: db.prepare(
+      'SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1'
+    ),
+    findUserByUsername: db.prepare('SELECT * FROM users WHERE username = ? LIMIT 1'),
+    findUserByEmail: db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1'),
+    findUserById: db.prepare('SELECT * FROM users WHERE id = ? LIMIT 1'),
+    touchLastLogin: db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?'),
+    listFavorites: db.prepare(
+      'SELECT symbole, created_at FROM favorites WHERE user_id = ? ORDER BY created_at ASC'
+    ),
+    addFavorite: db.prepare(
+      'INSERT OR IGNORE INTO favorites (user_id, symbole, created_at) VALUES (?, ?, ?)'
+    ),
+    removeFavorite: db.prepare('DELETE FROM favorites WHERE user_id = ? AND symbole = ?'),
+    countUsers: db.prepare('SELECT COUNT(*) AS total FROM users'),
     ping: db.prepare('SELECT 1 AS ok')
   };
 
@@ -127,6 +163,51 @@ function openDatabase(dataDir, logger) {
     return Number(result.changes || 0);
   }
 
+  function createUser({ username, email, passwordHash, createdAt = Date.now() }) {
+    const result = statements.insertUser.run(username, email, passwordHash, createdAt);
+    return Number(result.lastInsertRowid);
+  }
+
+  function findUserByLogin(login) {
+    return statements.findUserByLogin.get(login, login) || null;
+  }
+
+  function findUserByUsername(username) {
+    return statements.findUserByUsername.get(username) || null;
+  }
+
+  function findUserByEmail(email) {
+    return statements.findUserByEmail.get(email) || null;
+  }
+
+  function findUserById(id) {
+    return statements.findUserById.get(id) || null;
+  }
+
+  function touchLastLogin(id, at = Date.now()) {
+    statements.touchLastLogin.run(at, id);
+  }
+
+  function listFavorites(userId) {
+    return statements.listFavorites.all(userId).map((row) => ({
+      symbole: row.symbole,
+      createdAt: Number(row.created_at)
+    }));
+  }
+
+  function addFavorite(userId, symbole, createdAt = Date.now()) {
+    statements.addFavorite.run(userId, symbole, createdAt);
+  }
+
+  function removeFavorite(userId, symbole) {
+    const result = statements.removeFavorite.run(userId, symbole);
+    return Number(result.changes || 0) > 0;
+  }
+
+  function countUsers() {
+    return Number(statements.countUsers.get().total || 0);
+  }
+
   function ping() {
     return statements.ping.get().ok === 1;
   }
@@ -143,6 +224,16 @@ function openDatabase(dataDir, logger) {
     getVisitSummary,
     getVisitSeries,
     deleteVisitsBefore,
+    createUser,
+    findUserByLogin,
+    findUserByUsername,
+    findUserByEmail,
+    findUserById,
+    touchLastLogin,
+    listFavorites,
+    addFavorite,
+    removeFavorite,
+    countUsers,
     ping,
     close
   };

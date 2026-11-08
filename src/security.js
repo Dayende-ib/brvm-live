@@ -48,9 +48,10 @@ function sign(value, secret) {
   return crypto.createHmac('sha256', secret).update(value).digest('base64url');
 }
 
-function createSessionToken({ username, ttlMs, secret, now = Date.now() }) {
+function createSessionToken({ username, subject, ttlMs, secret, now = Date.now(), extra = {} }) {
   const payload = base64urlJson({
-    sub: username,
+    ...extra,
+    sub: subject ?? username,
     iat: now,
     exp: now + ttlMs,
     nonce: crypto.randomBytes(12).toString('base64url')
@@ -71,6 +72,36 @@ function verifySessionToken(token, secret, now = Date.now()) {
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (!data || typeof data.exp !== 'number' || data.exp <= now) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function createCsrfToken({ secret, ttlMs = 2 * 60 * 60 * 1000, now = Date.now() }) {
+  const payload = base64urlJson({
+    kind: 'csrf',
+    iat: now,
+    exp: now + ttlMs,
+    nonce: crypto.randomBytes(18).toString('base64url')
+  });
+  return `${payload}.${sign(payload, secret)}`;
+}
+
+function verifyCsrfToken(token, secret, now = Date.now()) {
+  if (typeof token !== 'string') return null;
+  const separator = token.lastIndexOf('.');
+  if (separator <= 0) return null;
+
+  const payload = token.slice(0, separator);
+  const signature = token.slice(separator + 1);
+  if (!timingSafeEqualString(signature, sign(payload, secret))) return null;
+
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!data || data.kind !== 'csrf' || typeof data.exp !== 'number' || data.exp <= now) {
+      return null;
+    }
     return data;
   } catch {
     return null;
@@ -104,6 +135,8 @@ module.exports = {
   verifyPassword,
   createSessionToken,
   verifySessionToken,
+  createCsrfToken,
+  verifyCsrfToken,
   sha256,
   timingSafeEqualString,
   hashApiKey,

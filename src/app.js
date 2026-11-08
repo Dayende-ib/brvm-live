@@ -5,11 +5,18 @@ const cors = require('cors');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
 
-const { createApiKeyAuth, createSessionManager } = require('./middleware/auth');
+const {
+  createApiKeyAuth,
+  createSessionManager,
+  createUserSessionManager,
+  createUserLoader,
+  createAuthCsrf
+} = require('./middleware/auth');
 const { createRateLimiters } = require('./middleware/rateLimit');
 const { createVisitTracker } = require('./middleware/visits');
 const { createApiRouter } = require('./routes/api');
 const { createAdminRouter } = require('./routes/admin');
+const { createUsersRouter } = require('./routes/users');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const VERSION = '2.0.0';
@@ -62,8 +69,8 @@ function createApp({ config, db, cache, logger }) {
     '/api',
     cors({
       origin: corsOrigin,
-      methods: ['GET', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization'],
+      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization', 'X-CSRF-Token'],
       maxAge: 86400
     })
   );
@@ -123,6 +130,22 @@ function createApp({ config, db, cache, logger }) {
   const apiKeyAuth = createApiKeyAuth(config);
   const limiters = createRateLimiters(config);
   const session = createSessionManager(config);
+  const userSession = createUserSessionManager(config);
+  const authCsrf = createAuthCsrf(config);
+
+  app.use(createUserLoader({ db, session: userSession }));
+
+  app.use(
+    createUsersRouter({
+      config,
+      db,
+      cache,
+      session: userSession,
+      authCsrf,
+      limiters,
+      logger
+    })
+  );
 
   app.use('/api', apiKeyAuth);
   app.use('/api/cours', limiters.apiLimiter);

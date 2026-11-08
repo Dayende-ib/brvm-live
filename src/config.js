@@ -29,6 +29,7 @@ const envSchema = z.object({
 
   SESSION_SECRET: z.string().min(32).optional(),
   SESSION_TTL_MS: z.coerce.number().int().min(60000).default(8 * 60 * 60 * 1000),
+  USER_SESSION_TTL_MS: z.coerce.number().int().min(60000).default(7 * 24 * 60 * 60 * 1000),
   ADMIN_USERNAME: z.string().min(1).default('admin'),
   ADMIN_PASSWORD: z.string().min(1).optional(),
   ADMIN_PASSWORD_HASH: z.string().min(1).optional(),
@@ -43,7 +44,10 @@ const envSchema = z.object({
   RATE_LIMIT_API_KEY: z.coerce.number().int().min(1).default(600),
   RATE_LIMIT_VISITS: z.coerce.number().int().min(1).default(120),
   RATE_LIMIT_LOGIN: z.coerce.number().int().min(1).default(10),
-  RATE_LIMIT_ADMIN: z.coerce.number().int().min(1).default(240)
+  RATE_LIMIT_ADMIN: z.coerce.number().int().min(1).default(240),
+  RATE_LIMIT_SIGNUP: z.coerce.number().int().min(1).default(5),
+  RATE_LIMIT_USER_LOGIN: z.coerce.number().int().min(1).default(15),
+  RATE_LIMIT_ACCOUNT: z.coerce.number().int().min(1).default(120)
 });
 
 function parseTrustProxy(value) {
@@ -84,7 +88,7 @@ function loadConfig(env = process.env) {
     sessionSecret = crypto.randomBytes(32).toString('hex');
     warnings.push(
       'SESSION_SECRET absent : un secret éphémère a été généré. ' +
-        'Les sessions admin et les compteurs de visiteurs seront réinitialisés à chaque redémarrage.'
+        'Les sessions admin/utilisateurs et les compteurs de visiteurs seront réinitialisés à chaque redémarrage.'
     );
   }
 
@@ -127,6 +131,7 @@ function loadConfig(env = process.env) {
 
     sessionSecret,
     sessionTtlMs: cfg.SESSION_TTL_MS,
+    userSessionTtlMs: cfg.USER_SESSION_TTL_MS,
     admin: {
       enabled: adminEnabled,
       username: cfg.ADMIN_USERNAME,
@@ -144,7 +149,10 @@ function loadConfig(env = process.env) {
       apiKey: cfg.RATE_LIMIT_API_KEY,
       visits: cfg.RATE_LIMIT_VISITS,
       login: cfg.RATE_LIMIT_LOGIN,
-      admin: cfg.RATE_LIMIT_ADMIN
+      admin: cfg.RATE_LIMIT_ADMIN,
+      signup: cfg.RATE_LIMIT_SIGNUP,
+      userLogin: cfg.RATE_LIMIT_USER_LOGIN,
+      account: cfg.RATE_LIMIT_ACCOUNT
     },
 
     warnings

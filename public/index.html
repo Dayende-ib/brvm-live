@@ -29,17 +29,21 @@
         <a href="/api.html">API</a>
       </nav>
 
-      <div class="topbar-meta">
+      <div class="topbar-actions">
         <p id="status" class="status" aria-live="polite">
           <span class="status-dot" aria-hidden="true"></span>
           <span id="status-text">Chargement…</span>
         </p>
-        <button id="refresh" class="btn btn-ghost" type="button" aria-label="Actualiser les cours">
+        <button id="refresh" class="btn btn-ghost btn-icon-text" type="button" aria-label="Actualiser les cours">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
             <path d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3v4h-4" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
           </svg>
           <span class="btn-label">Actualiser</span>
         </button>
+        <div class="topbar-auth" data-auth-area>
+          <a class="btn btn-ghost btn-sm" href="/connexion">Connexion</a>
+          <a class="btn btn-sm" href="/inscription">Créer un compte</a>
+        </div>
       </div>
     </div>
   </header>
@@ -76,12 +80,20 @@
           <button id="clear-search" class="icon-btn" type="button" aria-label="Effacer la recherche" hidden>×</button>
         </div>
 
-        <a class="btn btn-ghost" id="export-csv" href="/api/cours?format=csv" download>
-          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-            <path d="M10 2v9m0 0 3.5-3.5M10 11 6.5 7.5M4 14v3h12v-3" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-          </svg>
-          Exporter CSV
-        </a>
+        <div class="toolbar-actions">
+          <button id="favorites-filter" class="btn btn-ghost" type="button" aria-pressed="false" hidden>
+            <span class="star-icon" aria-hidden="true">★</span>
+            <span>Mes favoris</span>
+            <span id="favorites-count" class="count-badge" hidden>0</span>
+          </button>
+
+          <a class="btn btn-ghost" id="export-csv" href="/api/cours?format=csv" download>
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="M10 2v9m0 0 3.5-3.5M10 11 6.5 7.5M4 14v3h12v-3" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            Exporter CSV
+          </a>
+        </div>
       </div>
 
       <div id="alert" class="alert alert-error" role="alert" hidden></div>
@@ -132,6 +144,7 @@
     </footer>
   </main>
 
+  <script src="/session.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

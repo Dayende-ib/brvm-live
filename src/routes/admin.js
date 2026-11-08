@@ -125,6 +125,7 @@ function adminPage({ config, cache, db, message, csrf: rawCsrf }) {
       ${metricCard('Vues totales', String(summary.vuesTotal), 'depuis la mise en service')}
       ${metricCard('Visiteurs uniques', String(summary.uniquesTotal), 'cumul des uniques par jour')}
       ${metricCard('Aujourd’hui', String(summary.aujourdhui.vues), `${summary.aujourdhui.uniques} unique(s)`)}
+      ${metricCard('Comptes', String(db.countUsers()), 'inscriptions publiques')}
       ${metricCard('Actions en cache', status.present ? String(status.actions) : '0', status.present ? `MAJ source : ${status.maj || '—'}` : 'aucune donnée')}
     </section>
 
