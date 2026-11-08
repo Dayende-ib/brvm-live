@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const winston = require('winston');
 const { z } = require('zod');
-const coursHandler = require('./cours');
+const coursHandler = require('./api/cours');
 
 // Logger Winston
 const logger = winston.createLogger({
@@ -97,12 +97,12 @@ app.get('/api/cours', async (req, res) => {
     if (error instanceof z.ZodError) {
       logger.warn('Validation error', {
         endpoint: '/api/cours',
-        errors: error.errors,
+        errors: error.issues,
         ip: req.ip
       });
       return res.status(400).json({
         erreur: 'Paramètres invalides',
-        details: error.errors
+        details: error.issues
       });
     }
     
