@@ -162,6 +162,19 @@
       font-size: 0.9rem;
     }
 
+    .site-footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #f0f0f0;
+      color: #888;
+      font-size: 0.85rem;
+      text-align: center;
+    }
+
+    .site-footer a {
+      color: #1a1a1a;
+    }
+
     @media (max-width: 768px) {
       body {
         padding: 1rem;
@@ -208,8 +221,21 @@
     <div id="content"></div>
   </div>
 
+  <footer class="site-footer">
+    Par <a href="https://ibrahimdayende.me" target="_blank" rel="noopener noreferrer">Dayende</a>
+  </footer>
+
   <script>
     const API_URL = '/api/cours';
+
+    function esc(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
     async function loadData(url = API_URL) {
       const loading = document.getElementById('loading');
@@ -268,8 +294,8 @@
           <tbody>
             ${actions.map(action => `
               <tr>
-                <td class="symbole">${action.symbole}</td>
-                <td class="nom">${action.nom}</td>
+                <td class="symbole">${esc(action.symbole)}</td>
+                <td class="nom">${esc(action.nom)}</td>
                 <td class="number">${formatNumber(action.volume)}</td>
                 <td class="number">${formatNumber(action.cours_veille)}</td>
                 <td class="number">${formatNumber(action.ouverture)}</td>
@@ -295,7 +321,7 @@
       const input = document.getElementById('searchInput');
       const symbole = input.value.trim().toUpperCase();
       if (symbole) {
-        loadData(`${API_URL}?symbole=${symbole}`);
+        loadData(`${API_URL}?symbole=${encodeURIComponent(symbole)}`);
       }
     }
 
