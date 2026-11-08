@@ -1,0 +1,151 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
+
+const MIGRATIONS = [
+  `
+  CREATE TABLE cache (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
+  `
+  CREATE TABLE visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day TEXT NOT NULL,
+    path TEXT NOT NULL,
+    visitor_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX idx_visits_day ON visits(day);
+  CREATE INDEX idx_visits_day_hash ON visits(day, visitor_hash);
+  `
+];
+
+function migrate(db) {
+  const current = Number(db.prepare('PRAGMA user_version').get().user_version || 0);
+  for (let version = current; version < MIGRATIONS.length; version += 1) {
+    db.exec('BEGIN');
+    try {
+      db.exec(MIGRATIONS[version]);
+      db.exec(`PRAGMA user_version = ${version + 1}`);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+}
+
+function openDatabase(dataDir, logger) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  const file = path.join(dataDir, 'brvm-live.sqlite');
+  const db = new DatabaseSync(file);
+
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA busy_timeout = 5000');
+  db.exec('PRAGMA foreign_keys = ON');
+  migrate(db);
+
+  const statements = {
+    getCache: db.prepare('SELECT value, updated_at FROM cache WHERE key = ?'),
+    setCache: db.prepare(`
+      INSERT INTO cache (key, value, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `),
+    insertVisit: db.prepare(
+      'INSERT INTO visits (day, path, visitor_hash, created_at) VALUES (?, ?, ?, ?)'
+    ),
+    totalVisits: db.prepare(`
+      SELECT COUNT(*) AS vues,
+             COUNT(DISTINCT day || ':' || visitor_hash) AS uniques
+      FROM visits
+    `),
+    dayVisits: db.prepare(`
+      SELECT COUNT(*) AS vues,
+             COUNT(DISTINCT visitor_hash) AS uniques
+      FROM visits
+      WHERE day = ?
+    `),
+    visitSeries: db.prepare(`
+      SELECT day,
+             COUNT(*) AS vues,
+             COUNT(DISTINCT visitor_hash) AS uniques
+      FROM visits
+      WHERE day >= ?
+      GROUP BY day
+      ORDER BY day ASC
+    `),
+    deleteVisitsBefore: db.prepare('DELETE FROM visits WHERE day < ?'),
+    ping: db.prepare('SELECT 1 AS ok')
+  };
+
+  function getCache(key) {
+    const row = statements.getCache.get(key);
+    if (!row) return null;
+    try {
+      return { value: JSON.parse(row.value), updatedAt: Number(row.updated_at) };
+    } catch (error) {
+      logger?.warn('Entrée de cache illisible ignorée', { key, error: error.message });
+      return null;
+    }
+  }
+
+  function setCache(key, value, updatedAt = Date.now()) {
+    statements.setCache.run(key, JSON.stringify(value), updatedAt);
+  }
+
+  function recordVisit({ day, path: visitPath, visitorHash, createdAt = Date.now() }) {
+    statements.insertVisit.run(day, visitPath, visitorHash, createdAt);
+  }
+
+  function getVisitSummary(day) {
+    const total = statements.totalVisits.get();
+    const today = statements.dayVisits.get(day);
+    return {
+      vuesTotal: Number(total.vues || 0),
+      uniquesTotal: Number(total.uniques || 0),
+      aujourdhui: {
+        jour: day,
+        vues: Number(today.vues || 0),
+        uniques: Number(today.uniques || 0)
+      }
+    };
+  }
+
+  function getVisitSeries(sinceDay) {
+    return statements.visitSeries.all(sinceDay).map((row) => ({
+      jour: row.day,
+      vues: Number(row.vues || 0),
+      uniques: Number(row.uniques || 0)
+    }));
+  }
+
+  function deleteVisitsBefore(day) {
+    const result = statements.deleteVisitsBefore.run(day);
+    return Number(result.changes || 0);
+  }
+
+  function ping() {
+    return statements.ping.get().ok === 1;
+  }
+
+  function close() {
+    db.close();
+  }
+
+  return {
+    file,
+    getCache,
+    setCache,
+    recordVisit,
+    getVisitSummary,
+    getVisitSeries,
+    deleteVisitsBefore,
+    ping,
+    close
+  };
+}
+
+module.exports = { openDatabase };

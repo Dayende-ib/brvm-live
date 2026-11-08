@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Cours des actions de la BRVM, mis à jour depuis brvm.org avec un cache de 30 minutes.">
+  <meta name="theme-color" content="#020617">
+  <title>BRVM Live — Cours des actions</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#contenu">Aller au contenu</a>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="/" aria-label="BRVM Live, accueil">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect x="3" y="18" width="5" height="10" rx="1.5"></rect>
+          <rect x="11" y="11" width="5" height="17" rx="1.5"></rect>
+          <rect x="19" y="5" width="5" height="23" rx="1.5"></rect>
+          <path d="M4 14 L12 8 L20 10 L28 3" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        <span>BRVM <strong>Live</strong></span>
+      </a>
+
+      <nav class="topnav" aria-label="Navigation principale">
+        <a href="/" aria-current="page">Cours</a>
+        <a href="/api.html">API</a>
+      </nav>
+
+      <div class="topbar-meta">
+        <p id="status" class="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="status-text">Chargement…</span>
+        </p>
+        <button id="refresh" class="btn btn-ghost" type="button" aria-label="Actualiser les cours">
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3v4h-4" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          <span class="btn-label">Actualiser</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenu" class="container">
+    <section class="hero">
+      <p class="eyebrow">Bourse Régionale des Valeurs Mobilières</p>
+      <h1>Cours des actions</h1>
+      <p class="lede">
+        Données publiques de <a href="https://www.brvm.org/fr/cours-actions/0" target="_blank" rel="noopener noreferrer">brvm.org</a>,
+        mises en cache 30 minutes et rafraîchies automatiquement.
+      </p>
+    </section>
+
+    <section id="metrics" class="metrics" aria-label="Résumé du marché"></section>
+
+    <section class="panel" aria-labelledby="cours-title">
+      <div class="panel-head">
+        <div>
+          <h2 id="cours-title">Marché des actions</h2>
+          <p id="updated" class="muted small">—</p>
+        </div>
+        <span id="result-count" class="muted small" aria-live="polite"></span>
+      </div>
+
+      <div class="toolbar">
+        <div class="search">
+          <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <circle cx="9" cy="9" r="6" fill="none" stroke-width="1.8"></circle>
+            <path d="M13.5 13.5 L18 18" fill="none" stroke-width="1.8" stroke-linecap="round"></path>
+          </svg>
+          <label class="visually-hidden" for="search">Rechercher par symbole ou nom</label>
+          <input id="search" type="search" placeholder="Symbole ou nom…" autocomplete="off" spellcheck="false">
+          <button id="clear-search" class="icon-btn" type="button" aria-label="Effacer la recherche" hidden>×</button>
+        </div>
+
+        <a class="btn btn-ghost" id="export-csv" href="/api/cours?format=csv" download>
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path d="M10 2v9m0 0 3.5-3.5M10 11 6.5 7.5M4 14v3h12v-3" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          Exporter CSV
+        </a>
+      </div>
+
+      <div id="alert" class="alert alert-error" role="alert" hidden></div>
+
+      <div class="table-wrap">
+        <table id="table">
+          <caption class="visually-hidden">Cours des actions de la BRVM</caption>
+          <thead>
+            <tr>
+              <th scope="col" data-key="symbole" aria-sort="ascending">
+                <button class="sort" type="button" data-key="symbole">Symbole<span class="sort-icon" aria-hidden="true"></span></button>
+              </th>
+              <th scope="col" data-key="nom">
+                <button class="sort" type="button" data-key="nom">Nom<span class="sort-icon" aria-hidden="true"></span></button>
+              </th>
+              <th scope="col" data-key="volume" class="numeric">
+                <button class="sort" type="button" data-key="volume">Volume<span class="sort-icon" aria-hidden="true"></span></button>
+              </th>
+              <th scope="col" data-key="cours_veille" class="numeric">
+                <button class="sort" type="button" data-key="cours_veille">Cours veille<span class="sort-icon" aria-hidden="true"></span></button>
+              </th>
+              <th scope="col" data-key="ouverture" class="numeric">
+                <button class="sort" type="button" data-key="ouverture">Ouverture<span class="sort-icon" aria-hidden="true"></span></button>
+              </th>
+              <th scope="col" data-key="cloture" class="numeric">
+                <button class="sort" type="button" data-key="cloture">Clôture<span class="sort-icon" aria-hidden="true"></span></button>
+              </th>
+              <th scope="col" data-key="variation_pct" class="numeric">
+                <button class="sort" type="button" data-key="variation_pct">Variation<span class="sort-icon" aria-hidden="true"></span></button>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <p id="empty" class="empty" hidden>Aucune action ne correspond à cette recherche.</p>
+    </section>
+
+    <footer class="footer">
+      <p>
+        Données indicatives, pas un conseil en investissement. Source :
+        <a href="https://www.brvm.org/fr/cours-actions/0" target="_blank" rel="noopener noreferrer">brvm.org</a>
+        · <a href="/api.html">Documentation API</a>.
+      </p>
+      <p id="visits" class="muted small" aria-live="polite"></p>
+      <p>Par <a href="https://ibrahimdayende.me" target="_blank" rel="noopener noreferrer">Dayende</a></p>
+    </footer>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,191 +1,124 @@
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const winston = require('winston');
-const { z } = require('zod');
-const coursHandler = require('./api/cours');
+const { loadConfig } = require('./src/config');
+const { createLogger } = require('./src/logger');
+const { openDatabase } = require('./src/db');
+const { createScraper } = require('./src/scraper');
+const { createCoursCache } = require('./src/cache');
+const { createApp } = require('./src/app');
 
-// Logger Winston
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' }),
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ]
-});
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Security middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:"]
-    }
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  }
-}));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per windowMs
-  message: { erreur: 'Trop de requêtes, réessayez plus tard.' },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
-app.use(limiter);
-
-// CORS
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
-  methods: ['GET'],
-  allowedHeaders: ['Content-Type']
-}));
-
-app.use(express.json({ limit: '10kb' }));
-
-// Validation schema with Zod
-const coursQuerySchema = z.object({
-  symbole: z.string().max(10).optional().transform(val => val ? val.trim().toUpperCase() : undefined),
-  format: z.enum(['json', 'csv']).optional().default('json')
-});
-
-// API route with validation and logging
-app.get('/api/cours', async (req, res) => {
-  const startTime = Date.now();
-  
+function start() {
+  let config;
   try {
-    // Validate query parameters
-    const validatedQuery = coursQuerySchema.parse(req.query);
-    req.query = validatedQuery;
-    
-    logger.info('API request', {
-      endpoint: '/api/cours',
-      query: validatedQuery,
-      ip: req.ip,
-      userAgent: req.get('user-agent')
-    });
-    
-    await coursHandler(req, res);
-    
-    const duration = Date.now() - startTime;
-    logger.info('API response', {
-      endpoint: '/api/cours',
-      status: res.statusCode,
-      duration: `${duration}ms`
-    });
+    config = loadConfig(process.env);
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      logger.warn('Validation error', {
-        endpoint: '/api/cours',
-        errors: error.issues,
-        ip: req.ip
-      });
-      return res.status(400).json({
-        erreur: 'Paramètres invalides',
-        details: error.issues
-      });
-    }
-    
-    logger.error('API error', {
-      endpoint: '/api/cours',
-      error: error.message,
-      stack: error.stack,
-      ip: req.ip
+    console.error(`[configuration] ${error.message}`);
+    process.exit(1);
+  }
+
+  const logger = createLogger({ env: config.nodeEnv });
+  for (const warning of config.warnings) logger.warn(warning);
+
+  const db = openDatabase(config.dataDir, logger);
+  const scraper = createScraper({ config, logger });
+  const cache = createCoursCache({
+    db,
+    scraper: scraper.scrape,
+    logger,
+    ttlMs: config.cacheTtlMs,
+    maxStaleMs: config.cacheMaxStaleMs
+  });
+  const app = createApp({ config, db, cache, logger });
+
+  const server = app.listen(config.port, config.host, () => {
+    logger.info('BRVM Live démarré', {
+      port: config.port,
+      host: config.host,
+      env: config.nodeEnv,
+      base: db.file
     });
-    
-    return res.status(500).json({
-      erreur: 'Erreur serveur interne'
+  });
+
+  server.on('error', (error) => {
+    logger.error('Impossible de démarrer le serveur HTTP', { error: error.message });
+    db.close();
+    process.exit(1);
+  });
+
+  function cleanupVisits() {
+    try {
+      const before = new Date(Date.now() - config.visitsRetentionDays * DAY_MS)
+        .toISOString()
+        .slice(0, 10);
+      const deleted = db.deleteVisitsBefore(before);
+      if (deleted > 0) logger.info('Anciennes visites purgées', { supprimees: deleted, avant: before });
+    } catch (error) {
+      logger.warn('Purge des visites impossible', { error: error.message });
+    }
+  }
+
+  cleanupVisits();
+  const cleanupTimer = setInterval(cleanupVisits, DAY_MS);
+  cleanupTimer.unref();
+
+  cache
+    .get()
+    .then((result) => {
+      logger.info('Cache initialisé', {
+        source: result.source,
+        actions: result.data.actions.length,
+        perime: result.stale
+      });
+    })
+    .catch((error) => {
+      logger.warn('Préchauffage du cache échoué (nouvelle tentative à la prochaine requête)', {
+        error: error.message
+      });
+    });
+
+  let shuttingDown = false;
+  function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info('Arrêt en cours', { signal });
+
+    const forceExit = setTimeout(() => {
+      logger.error('Arrêt forcé après 10 s');
+      process.exit(1);
+    }, 10000);
+    forceExit.unref();
+
+    server.close((error) => {
+      if (error) logger.error('Erreur lors de la fermeture du serveur', { error: error.message });
+      clearInterval(cleanupTimer);
+      try {
+        db.close();
+      } catch (dbError) {
+        logger.error('Erreur lors de la fermeture de la base', { error: dbError.message });
+      }
+      clearTimeout(forceExit);
+      logger.info('Arrêt terminé');
+      process.exit(error ? 1 : 0);
     });
   }
-});
 
-// Root endpoint
-app.get('/', (req, res) => {
-  logger.info('Root endpoint accessed', { ip: req.ip });
-  res.json({
-    message: 'BRVM Live API',
-    version: '1.0.0',
-    endpoints: {
-      '/api/cours': {
-        en: 'Get all stocks (JSON)',
-        fr: 'Récupérer toutes les actions (JSON)'
-      },
-      '/api/cours?symbole=ONTBF': {
-        en: 'Get single stock by symbol',
-        fr: 'Récupérer une action par son symbole'
-      },
-      '/api/cours?format=csv': {
-        en: 'Get all stocks in CSV format',
-        fr: 'Récupérer toutes les actions (CSV)'
-      }
-    },
-    security: {
-      rateLimit: {
-        en: '100 requests per 15 minutes',
-        fr: '100 requêtes par 15 minutes'
-      },
-      headers: {
-        en: 'Helmet enabled',
-        fr: 'Helmet activé'
-      },
-      logging: {
-        en: 'Winston enabled',
-        fr: 'Winston activé'
-      }
-    }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error('Promesse rejetée non gérée', {
+      error: reason instanceof Error ? reason.message : String(reason)
+    });
   });
-});
 
-// 404 handler
-app.use((req, res) => {
-  // Ignore common automatic requests (service workers, favicons, etc.)
-  const ignoredPaths = ['/sw.js', '/service-worker.js', '/favicon.ico', '/robots.txt'];
-  if (ignoredPaths.includes(req.path)) {
-    return res.status(404).send();
-  }
-  
-  logger.warn('404 Not Found', {
-    path: req.path,
-    method: req.method,
-    ip: req.ip
+  process.on('uncaughtException', (error) => {
+    logger.error('Exception non capturée', { error: error.message, stack: error.stack });
+    shutdown('uncaughtException');
   });
-  res.status(404).json({ erreur: 'Endpoint non trouvé' });
-});
 
-// Global error handler
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error', {
-    error: err.message,
-    stack: err.stack,
-    path: req.path,
-    ip: req.ip
-  });
-  res.status(500).json({ erreur: 'Erreur serveur interne' });
-});
+  return { server, db, cache, config, logger };
+}
 
-// Start server
-app.listen(PORT, () => {
-  logger.info(`BRVM Live API started on port ${PORT}`);
-  console.log(`BRVM Live API running on port ${PORT}`);
-  console.log(`Access at http://localhost:${PORT}`);
-});
+if (require.main === module) start();
+
+module.exports = { start };

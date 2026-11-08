@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation de l'API BRVM Live : endpoints, paramètres, authentification, quotas et exemples d'utilisation.">
+  <meta name="theme-color" content="#020617">
+  <title>Documentation API — BRVM Live</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#contenu">Aller au contenu</a>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="/" aria-label="BRVM Live, accueil">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect x="3" y="18" width="5" height="10" rx="1.5"></rect>
+          <rect x="11" y="11" width="5" height="17" rx="1.5"></rect>
+          <rect x="19" y="5" width="5" height="23" rx="1.5"></rect>
+          <path d="M4 14 L12 8 L20 10 L28 3" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        <span>BRVM <strong>Live</strong></span>
+      </a>
+
+      <nav class="topnav" aria-label="Navigation principale">
+        <a href="/">Cours</a>
+        <a href="/api.html" aria-current="page">API</a>
+      </nav>
+
+      <div class="topbar-meta">
+        <a class="btn btn-ghost" href="/api/cours" target="_blank" rel="noopener">
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path d="M7 3H4v13h13v-3M11 3h6v6M17 3l-7 7" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          Tester l’API
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenu" class="container">
+    <section class="hero doc-hero">
+      <p class="eyebrow">Documentation</p>
+      <h1>API BRVM Live</h1>
+      <p class="lede">
+        Une API HTTP simple pour récupérer les cours des actions de la BRVM en JSON ou en CSV.
+        Pas de compte, pas de SDK : une requête <code>GET</code> suffit.
+      </p>
+      <p class="base-url">
+        <span>Base URL</span>
+        <code data-base-url>https://votre-domaine.tld</code>
+      </p>
+    </section>
+
+    <nav class="toc panel" aria-label="Sommaire">
+      <a href="#demarrage">Démarrage rapide</a>
+      <a href="#endpoints">Endpoints</a>
+      <a href="#donnees">Format des données</a>
+      <a href="#cache">Cache et fraîcheur</a>
+      <a href="#authentification">Clé API</a>
+      <a href="#limites">Quotas et erreurs</a>
+      <a href="#bonnes-pratiques">Bonnes pratiques</a>
+    </nav>
+
+    <section id="demarrage" class="panel doc-section">
+      <h2>Démarrage rapide</h2>
+      <p class="muted">
+        Remplacez <code>https://votre-domaine.tld</code> par l’URL de votre instance. Les exemples
+        ci-dessous s’adaptent automatiquement au domaine courant lorsque JavaScript est activé.
+      </p>
+
+      <div class="grid-2">
+        <div class="code-block">
+          <div class="code-head">
+            <span>cURL</span>
+            <button class="copy-btn" type="button" data-copy="ex-curl" aria-label="Copier l’exemple cURL">Copier</button>
+          </div>
+          <pre><code id="ex-curl">curl -s https://votre-domaine.tld/api/cours</code></pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-head">
+            <span>JavaScript</span>
+            <button class="copy-btn" type="button" data-copy="ex-js" aria-label="Copier l’exemple JavaScript">Copier</button>
+          </div>
+          <pre><code id="ex-js">const response = await fetch('https://votre-domaine.tld/api/cours');
+const data = await response.json();
+
+for (const action of data.actions) {
+  console.log(action.symbole, action.cloture, action.variation_pct);
+}</code></pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-head">
+            <span>Python</span>
+            <button class="copy-btn" type="button" data-copy="ex-python" aria-label="Copier l’exemple Python">Copier</button>
+          </div>
+          <pre><code id="ex-python">import requests
+
+data = requests.get(
+    "https://votre-domaine.tld/api/cours",
+    timeout=10,
+).json()
+
+for action in data["actions"]:
+    print(action["symbole"], action["cloture"])</code></pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-head">
+            <span>Google Sheets / Excel</span>
+            <button class="copy-btn" type="button" data-copy="ex-sheets" aria-label="Copier la formule Google Sheets">Copier</button>
+          </div>
+          <pre><code id="ex-sheets">=IMPORTDATA("https://votre-domaine.tld/api/cours?format=csv")</code></pre>
+        </div>
+      </div>
+
+      <div class="callout">
+        Astuce : pour un symbole précis, ajoutez <code>?symbole=ONTBF</code>. Pour un fichier,
+        utilisez <code>?format=csv</code>.
+      </div>
+    </section>
+
+    <section id="endpoints" class="panel doc-section">
+      <h2>Endpoints</h2>
+
+      <article class="endpoint">
+        <h3><span class="method">GET</span> <code>/api/cours</code></h3>
+        <p class="muted">Renvoie toutes les actions cotées, avec la date de mise à jour de la source.</p>
+
+        <div class="table-wrap params-wrap">
+          <table class="params">
+            <caption class="visually-hidden">Paramètres de /api/cours</caption>
+            <thead>
+              <tr>
+                <th scope="col">Paramètre</th>
+                <th scope="col">Valeurs</th>
+                <th scope="col">Défaut</th>
+                <th scope="col">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>symbole</code></td>
+                <td>texte</td>
+                <td>—</td>
+                <td>Filtre une action par son symbole, insensible à la casse (ex. <code>ONTBF</code>).</td>
+              </tr>
+              <tr>
+                <td><code>format</code></td>
+                <td><code>json</code>, <code>csv</code></td>
+                <td><code>json</code></td>
+                <td>Format de la réponse. <code>csv</code> renvoie un fichier téléchargeable.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block">
+          <div class="code-head">
+            <span>Réponse JSON (extrait)</span>
+            <button class="copy-btn" type="button" data-copy="ex-response" aria-label="Copier l’exemple de réponse JSON">Copier</button>
+          </div>
+          <pre><code id="ex-response">{
+  "maj": "Vendredi, 6 novembre, 2026 - 22:45",
+  "nombre": 48,
+  "actions": [
+    {
+      "symbole": "ABJC",
+      "nom": "SERVAIR ABIDJAN COTE D'IVOIRE",
+      "volume": 3026,
+      "cours_veille": 3395,
+      "ouverture": 3400,
+      "cloture": 3400,
+      "variation_pct": 0.15
+    }
+  ],
+  "source": "https://www.brvm.org/fr/cours-actions/0",
+  "recupere_le": "2026-11-08T21:42:07.000Z",
+  "mis_a_jour_le": "2026-11-08T21:42:07.000Z",
+  "perime": false
+}</code></pre>
+        </div>
+      </article>
+
+      <article class="endpoint">
+        <h3><span class="method">GET</span> <code>/api/cours?symbole=ONTBF</code></h3>
+        <p class="muted">
+          Renvoie une seule action. Si le symbole n’existe pas : <code>404</code> avec la liste
+          <code>symboles_disponibles</code>.
+        </p>
+
+        <div class="code-block">
+          <div class="code-head">
+            <span>cURL</span>
+            <button class="copy-btn" type="button" data-copy="ex-symbole" aria-label="Copier l’exemple par symbole">Copier</button>
+          </div>
+          <pre><code id="ex-symbole">curl -s "https://votre-domaine.tld/api/cours?symbole=ONTBF"</code></pre>
+        </div>
+      </article>
+
+      <article class="endpoint">
+        <h3><span class="method">GET</span> <code>/api/cours?format=csv</code></h3>
+        <p class="muted">
+          Export CSV encodé en UTF-8 avec BOM, compatible Excel et Google Sheets. Les cellules
+          texte sont protégées contre l’injection de formules.
+        </p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>En-têtes HTTP</span>
+            <button class="copy-btn" type="button" data-copy="ex-csv" aria-label="Copier l’exemple CSV">Copier</button>
+          </div>
+          <pre><code id="ex-csv">Content-Type: text/csv; charset=utf-8
+Content-Disposition: attachment; filename="cours-brvm-2026-11-08.csv"
+
+symbole,nom,volume,cours_veille,ouverture,cloture,variation_pct
+ABJC,"SERVAIR ABIDJAN COTE D'IVOIRE",3026,3395,3400,3400,0.15</code></pre>
+        </div>
+      </article>
+
+      <article class="endpoint">
+        <h3><span class="method">GET</span> <code>/api/visites</code></h3>
+        <p class="muted">
+          Statistiques de fréquentation agrégées et anonymes : vues totales, visiteurs uniques
+          cumulés par jour, activité du jour et série sur 30 jours.
+        </p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>Réponse JSON</span>
+            <button class="copy-btn" type="button" data-copy="ex-visites" aria-label="Copier l’exemple de statistiques">Copier</button>
+          </div>
+          <pre><code id="ex-visites">{
+  "vues_total": 1024,
+  "visiteurs_uniques": 312,
+  "aujourd_hui": { "jour": "2026-11-08", "vues": 48, "uniques": 31 },
+  "serie_30_jours": [
+    { "jour": "2026-11-08", "vues": 48, "uniques": 31 }
+  ]
+}</code></pre>
+        </div>
+      </article>
+
+      <article class="endpoint">
+        <h3><span class="method">GET</span> <code>/health</code></h3>
+        <p class="muted">
+          Healthcheck pour la supervision : état de la base et du cache. Répond <code>200</code> si
+          la base est disponible, <code>503</code> sinon.
+        </p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>Réponse JSON</span>
+            <button class="copy-btn" type="button" data-copy="ex-health" aria-label="Copier l’exemple de healthcheck">Copier</button>
+          </div>
+          <pre><code id="ex-health">{
+  "statut": "ok",
+  "version": "2.0.0",
+  "uptime_s": 3600,
+  "base_de_donnees": "ok",
+  "cache": { "etat": "frais", "age_s": 120, "actions": 48 }
+}</code></pre>
+        </div>
+      </article>
+    </section>
+
+    <section id="donnees" class="panel doc-section">
+      <h2>Format des données</h2>
+      <p class="muted">Chaque action contient les champs suivants. Les valeurs numériques peuvent être <code>null</code> si la source ne les fournit pas.</p>
+
+      <div class="table-wrap params-wrap">
+        <table class="params">
+          <caption class="visually-hidden">Champs d’une action</caption>
+          <thead>
+            <tr>
+              <th scope="col">Champ</th>
+              <th scope="col">Type</th>
+              <th scope="col">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>symbole</code></td><td>string</td><td>Code de l’action (ex. <code>ABJC</code>).</td></tr>
+            <tr><td><code>nom</code></td><td>string</td><td>Raison sociale.</td></tr>
+            <tr><td><code>volume</code></td><td>number | null</td><td>Nombre de titres échangés.</td></tr>
+            <tr><td><code>cours_veille</code></td><td>number | null</td><td>Cours de la veille, en FCFA.</td></tr>
+            <tr><td><code>ouverture</code></td><td>number | null</td><td>Cours d’ouverture, en FCFA.</td></tr>
+            <tr><td><code>cloture</code></td><td>number | null</td><td>Cours de clôture, en FCFA.</td></tr>
+            <tr><td><code>variation_pct</code></td><td>number | null</td><td>Variation en pourcentage (ex. <code>0.15</code> = +0,15 %).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-warning">
+        <code>variation_pct</code> peut être recalculée à partir de <code>cloture</code> et
+        <code>cours_veille</code> si la source ne la fournit pas. Les montants sont en francs CFA
+        (XOF) et ne doivent pas être interprétés comme un conseil en investissement.
+      </div>
+    </section>
+
+    <section id="cache" class="panel doc-section">
+      <h2>Cache et fraîcheur</h2>
+      <p class="muted">
+        Les données sont mises en cache <strong>30 minutes</strong> côté serveur. Si brvm.org est
+        indisponible, la dernière réponse valide peut être servie jusqu’à <strong>24 heures</strong>.
+        Les en-têtes suivants permettent de savoir ce que vous recevez.
+      </p>
+
+      <div class="table-wrap params-wrap">
+        <table class="params">
+          <caption class="visually-hidden">En-têtes de cache</caption>
+          <thead>
+            <tr>
+              <th scope="col">En-tête</th>
+              <th scope="col">Valeurs</th>
+              <th scope="col">Signification</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>X-Data-Source</code></td><td><code>cache</code>, <code>fresh</code>, <code>stale</code></td><td>Origine de la donnée servie.</td></tr>
+            <tr><td><code>X-Data-Updated-At</code></td><td>date ISO 8601</td><td>Dernière récupération réussie.</td></tr>
+            <tr><td><code>Cache-Control</code></td><td><code>public, max-age=60, s-maxage=1800, stale-while-revalidate=86400</code></td><td>Cache navigateur/proxy.</td></tr>
+            <tr><td><code>Warning</code></td><td><code>110 - "Response is stale"</code></td><td>Présent uniquement si les données sont périmées (le corps contient alors <code>"perime": true</code>).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="code-block">
+        <div class="code-head">
+          <span>Vérifier la fraîcheur</span>
+          <button class="copy-btn" type="button" data-copy="ex-cache" aria-label="Copier l’exemple de vérification du cache">Copier</button>
+        </div>
+        <pre><code id="ex-cache">curl -sI https://votre-domaine.tld/api/cours | grep -i 'x-data\|cache-control'</code></pre>
+      </div>
+    </section>
+
+    <section id="authentification" class="panel doc-section">
+      <h2>Clé API</h2>
+      <p class="muted">
+        L’API est publique par défaut, avec un quota limité par IP. Des clés peuvent être
+        configurées côté serveur pour identifier des consommateurs et leur donner un quota plus élevé.
+      </p>
+
+      <div class="grid-2">
+        <div class="code-block">
+          <div class="code-head">
+            <span>En-tête X-API-Key</span>
+            <button class="copy-btn" type="button" data-copy="ex-key1" aria-label="Copier l’exemple avec X-API-Key">Copier</button>
+          </div>
+          <pre><code id="ex-key1">curl -s https://votre-domaine.tld/api/cours \
+  -H "X-API-Key: votre-cle-api"</code></pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-head">
+            <span>Authorization Bearer</span>
+            <button class="copy-btn" type="button" data-copy="ex-key2" aria-label="Copier l’exemple avec Bearer">Copier</button>
+          </div>
+          <pre><code id="ex-key2">curl -s https://votre-domaine.tld/api/cours \
+  -H "Authorization: Bearer votre-cle-api"</code></pre>
+        </div>
+      </div>
+
+      <div class="callout callout-warning">
+        <strong>Mode privé :</strong> avec <code>API_KEYS_REQUIRED=true</code>, toute requête
+        <code>/api/*</code> exige une clé, y compris la page publique. À réserver aux déploiements
+        API-only. Pour un site public, laissez <code>false</code> : les clés donnent seulement un
+        quota supérieur.
+      </div>
+
+      <p class="muted small">
+        Génération d’une clé côté serveur : <code>openssl rand -hex 24</code>, puis renseignez
+        <code>API_KEYS</code> dans le fichier <code>.env</code>. Ne placez jamais une clé dans du
+        code front-end.
+      </p>
+    </section>
+
+    <section id="limites" class="panel doc-section">
+      <h2>Quotas et erreurs</h2>
+      <p class="muted">Les quotas sont appliqués par IP sur une fenêtre glissante de 15 minutes.</p>
+
+      <div class="table-wrap params-wrap">
+        <table class="params">
+          <caption class="visually-hidden">Quotas par endpoint</caption>
+          <thead>
+            <tr>
+              <th scope="col">Endpoint</th>
+              <th scope="col">Quota</th>
+              <th scope="col">Fenêtre</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>/api/cours</code> (anonyme)</td><td>60 requêtes</td><td>15 min / IP</td></tr>
+            <tr><td><code>/api/cours</code> (clé API)</td><td>600 requêtes</td><td>15 min / clé</td></tr>
+            <tr><td><code>/api/visites</code></td><td>120 requêtes</td><td>15 min / IP</td></tr>
+            <tr><td><code>/admin/login</code></td><td>10 échecs</td><td>15 min / IP</td></tr>
+            <tr><td><code>/admin/*</code></td><td>240 requêtes</td><td>15 min / IP</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="code-block">
+        <div class="code-head">
+          <span>Réponse 429</span>
+          <button class="copy-btn" type="button" data-copy="ex-429" aria-label="Copier l’exemple de réponse 429">Copier</button>
+        </div>
+        <pre><code id="ex-429">{
+  "erreur": "Trop de requêtes vers l’API, réessayez plus tard.",
+  "reessayez_dans_secondes": 900
+}</code></pre>
+      </div>
+
+      <div class="table-wrap params-wrap">
+        <table class="params">
+          <caption class="visually-hidden">Codes d’erreur</caption>
+          <thead>
+            <tr>
+              <th scope="col">Code</th>
+              <th scope="col">Signification</th>
+              <th scope="col">Que faire ?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>400</code></td><td>Paramètres invalides.</td><td>Vérifiez <code>symbole</code> et <code>format</code>.</td></tr>
+            <tr><td><code>401</code></td><td>Clé API manquante ou invalide.</td><td>Ajoutez <code>X-API-Key</code> ou <code>Authorization: Bearer</code>.</td></tr>
+            <tr><td><code>404</code></td><td>Symbole ou endpoint inconnu.</td><td>Consultez <code>symboles_disponibles</code>.</td></tr>
+            <tr><td><code>429</code></td><td>Quota dépassé.</td><td>Attendez la fin de la fenêtre ou utilisez une clé API.</td></tr>
+            <tr><td><code>502</code></td><td>Source BRVM indisponible et pas de cache de secours.</td><td>Réessayez dans quelques minutes.</td></tr>
+            <tr><td><code>503</code></td><td>Base de données indisponible (<code>/health</code>).</td><td>Consultez les logs du service.</td></tr>
+            <tr><td><code>500</code></td><td>Erreur interne.</td><td>Réessayez ; signalez le problème si cela persiste.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="bonnes-pratiques" class="panel doc-section">
+      <h2>Bonnes pratiques</h2>
+      <ul class="doc-list">
+        <li>N’interrogez pas l’API plus d’une fois par minute : les données sont déjà mises en cache 30 minutes.</li>
+        <li>Utilisez <code>X-Data-Updated-At</code> ou le champ <code>mis_a_jour_le</code> pour afficher la fraîcheur.</li>
+        <li>Prévoyez le cas <code>perime: true</code> et les valeurs <code>null</code> dans votre code.</li>
+        <li>Pour Google Sheets ou Excel, préférez <code>?format=csv</code> : plus léger et directement tabulaire.</li>
+        <li>Attribuez la source : les données appartiennent à la BRVM et proviennent de brvm.org.</li>
+        <li>Les cours sont indicatifs : ce n’est pas un conseil en investissement.</li>
+      </ul>
+
+      <div class="callout">
+        Besoin d’un quota plus élevé ou d’un accès privé ? Configurez <code>API_KEYS</code> sur le
+        serveur et transmettez la clé via un en-tête — jamais dans l’URL ni dans le code public.
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>API et données indicatives, sans garantie de disponibilité. Source : brvm.org.</p>
+      <p><a href="/">Retour aux cours</a> · <a href="/health">État du service</a></p>
+    </footer>
+  </main>
+
+  <span id="copy-status" class="visually-hidden" role="status" aria-live="polite"></span>
+  <script src="/api.js" defer></script>
+</body>
+</html>

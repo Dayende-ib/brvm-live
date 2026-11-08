@@ -1,14 +1,24 @@
 {
   "name": "brvm-live",
-  "version": "1.0.0",
-  "description": "API de cours BRVM (scraping poli du site officiel brvm.org) pour Vercel",
+  "version": "2.0.0",
+  "description": "API et interface des cours BRVM (scraping du site officiel brvm.org), prête pour un VPS",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test",
+    "lint": "eslint .",
+    "hash-password": "node scripts/hash-password.js",
     "audit": "npm audit",
     "audit:fix": "npm audit fix"
   },
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "cheerio": "^1.0.0",
+    "compression": "^1.8.2",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.3",
@@ -16,7 +26,10 @@
     "winston": "^3.19.0",
     "zod": "^4.6.7"
   },
-  "engines": {
-    "node": "24.x"
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
+    "supertest": "^7.3.2"
   }
 }

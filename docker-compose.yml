@@ -1,0 +1,46 @@
+services:
+  app:
+    build: .
+    image: brvm-live:2.0.0
+    container_name: brvm-live
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATA_DIR: /app/data
+      TRUST_PROXY: "1"
+    ports:
+      # Écoute uniquement en local : Nginx (sur l'hôte) fait le reverse proxy.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - brvm-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  brvm-data:

@@ -1,0 +1,13 @@
+node_modules
+.git
+.github
+data
+logs
+coverage
+tests
+.env
+.env.*
+*.log
+README.md
+SECURITY.md
+deploy
