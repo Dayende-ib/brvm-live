@@ -155,13 +155,14 @@ function createApp({ config, db, cache, logger }) {
   });
   app.use('/api', apiKeyAuth);
   app.use('/api/cours', limiters.apiLimiter);
+  app.use('/api/historique', limiters.apiLimiter);
   app.use('/api/visites', limiters.visitsLimiter);
   app.use('/api', createApiRouter({ config, cache, db, logger }));
 
   app.use('/admin', createAdminRouter({ config, cache, db, session, authCsrf, logger, limiters }));
 
   // Pages HTML rendues côté serveur (accueil, doc API, fiches actions, robots.txt, sitemap.xml).
-  app.use(createPagesRouter({ config, cache }));
+  app.use(createPagesRouter({ config, cache, db }));
 
   app.use(
     express.static(publicDir, {

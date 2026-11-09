@@ -16,6 +16,8 @@
     "node": "24.x"
   },
   "dependencies": {
+    "@ip-location-db/dbip-country-mmdb": "^2.3.2026060120",
+    "bowser": "^2.15.0",
     "cheerio": "^1.0.0",
     "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
@@ -23,6 +25,7 @@
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.3",
     "helmet": "^8.3.0",
+    "maxmind": "^5.0.8",
     "winston": "^3.19.0",
     "zod": "^4.6.7"
   },

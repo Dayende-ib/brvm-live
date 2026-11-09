@@ -41,6 +41,21 @@ const MIGRATIONS = [
   `,
   `
   ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0;
+  `,
+  `
+  CREATE TABLE quotes (
+    symbole TEXT NOT NULL,
+    day TEXT NOT NULL,
+    nom TEXT NOT NULL,
+    volume REAL,
+    cours_veille REAL,
+    ouverture REAL,
+    cloture REAL,
+    variation_pct REAL,
+    recorded_at INTEGER NOT NULL,
+    PRIMARY KEY (symbole, day)
+  );
+  CREATE INDEX idx_quotes_day ON quotes(day);
   `
 ];
 
@@ -123,6 +138,28 @@ function openDatabase(dataDir, logger) {
       'UPDATE users SET session_version = session_version + 1 WHERE id = ?'
     ),
     deleteUser: db.prepare('DELETE FROM users WHERE id = ?'),
+    upsertQuote: db.prepare(`
+      INSERT INTO quotes (symbole, day, nom, volume, cours_veille, ouverture, cloture, variation_pct, recorded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(symbole, day) DO UPDATE SET
+        nom = excluded.nom,
+        volume = excluded.volume,
+        cours_veille = excluded.cours_veille,
+        ouverture = excluded.ouverture,
+        cloture = excluded.cloture,
+        variation_pct = excluded.variation_pct,
+        recorded_at = excluded.recorded_at
+    `),
+    quoteHistory: db.prepare(`
+      SELECT day, volume, cours_veille, ouverture, cloture, variation_pct
+      FROM quotes
+      WHERE symbole = ? AND day >= ?
+      ORDER BY day ASC
+    `),
+    historyStats: db.prepare(`
+      SELECT MIN(day) AS first_day, MAX(day) AS last_day, COUNT(DISTINCT day) AS sessions
+      FROM quotes
+    `),
     countUsers: db.prepare('SELECT COUNT(*) AS total FROM users'),
     ping: db.prepare('SELECT 1 AS ok')
   };
@@ -229,6 +266,51 @@ function openDatabase(dataDir, logger) {
     return Number(result.changes || 0) > 0;
   }
 
+  // Enregistre (ou met à jour) les cours d'une séance ; une ligne par action et par jour.
+  function recordQuotes(day, actions, recordedAt = Date.now()) {
+    db.exec('BEGIN');
+    try {
+      for (const action of actions) {
+        statements.upsertQuote.run(
+          action.symbole,
+          day,
+          action.nom ?? '',
+          action.volume ?? null,
+          action.cours_veille ?? null,
+          action.ouverture ?? null,
+          action.cloture ?? null,
+          action.variation_pct ?? null,
+          recordedAt
+        );
+      }
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return actions.length;
+  }
+
+  function getQuoteHistory(symbole, sinceDay = '0000-00-00') {
+    return statements.quoteHistory.all(symbole, sinceDay).map((row) => ({
+      day: row.day,
+      volume: row.volume,
+      cours_veille: row.cours_veille,
+      ouverture: row.ouverture,
+      cloture: row.cloture,
+      variation_pct: row.variation_pct
+    }));
+  }
+
+  function getHistoryStats() {
+    const row = statements.historyStats.get();
+    return {
+      firstDay: row.first_day ?? null,
+      lastDay: row.last_day ?? null,
+      sessions: Number(row.sessions || 0)
+    };
+  }
+
   function countUsers() {
     return Number(statements.countUsers.get().total || 0);
   }
@@ -261,6 +343,9 @@ function openDatabase(dataDir, logger) {
     updatePassword,
     bumpSessionVersion,
     deleteUser,
+    recordQuotes,
+    getQuoteHistory,
+    getHistoryStats,
     countUsers,
     ping,
     close

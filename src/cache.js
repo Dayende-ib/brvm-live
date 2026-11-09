@@ -5,6 +5,7 @@ function createCoursCache({
   ttlMs,
   maxStaleMs,
   failureCooldownMs = 60 * 1000,
+  onRefresh = null,
   now = () => Date.now()
 }) {
   let inflight = null;
@@ -19,6 +20,14 @@ function createCoursCache({
           const updatedAt = now();
           db.setCache('cours', data, updatedAt);
           lastFailure = null;
+          // Effet secondaire (historique) : un échec ne doit pas faire échouer le rafraîchissement.
+          if (onRefresh) {
+            try {
+              onRefresh(data, updatedAt);
+            } catch (error) {
+              logger?.warn('Traitement après rafraîchissement échoué', { error: error.message });
+            }
+          }
           return { data, updatedAt };
         } catch (error) {
           lastFailure = { at: now(), error };

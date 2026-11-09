@@ -1579,6 +1579,77 @@ td.symbole a:focus-visible {
   white-space: nowrap;
 }
 
+/* Historique des cours (fiches actions) */
+.chart-wrap {
+  margin: var(--space-4) 0 var(--space-5);
+}
+
+.price-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.price-chart .chart-grid {
+  stroke: var(--border);
+  stroke-dasharray: 3 4;
+}
+
+.price-chart .chart-label {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.price-chart .chart-line {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.price-chart.chart-up .chart-line {
+  stroke: var(--positive);
+}
+
+.price-chart.chart-down .chart-line {
+  stroke: var(--negative);
+}
+
+.price-chart.chart-up .chart-area {
+  fill: rgba(74, 222, 128, 0.1);
+}
+
+.price-chart.chart-down .chart-area {
+  fill: rgba(248, 113, 113, 0.1);
+}
+
+.price-chart.chart-up .chart-dot {
+  fill: var(--positive);
+}
+
+.price-chart.chart-down .chart-dot {
+  fill: var(--negative);
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: var(--space-6);
+}
+
+.history-grid h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 1rem;
+}
+
+.history-grid th[scope="row"] {
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+}
+
 /* Compte : sécurité et suppression */
 .security-grid {
   display: grid;

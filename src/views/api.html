@@ -225,6 +225,32 @@ ABJC,"SERVAIR ABIDJAN COTE D'IVOIRE",3026,3395,3400,3400,0.15</code></pre>
       </article>
 
       <article class="endpoint">
+        <h3><span class="method">GET</span> <code>/api/historique?symbole=ONTBF</code></h3>
+        <p class="muted">
+          Historique des séances d’une action, une ligne par jour (la plus ancienne en premier).
+          Paramètres : <code>symbole</code> (obligatoire), <code>jours</code> pour limiter aux N derniers
+          jours (1 à 3650) et <code>format=csv</code> pour un export tableur. Renvoie <code>404</code> si
+          aucun historique n’est encore enregistré pour ce symbole.
+        </p>
+        <div class="code-block">
+          <div class="code-head">
+            <span>Réponse JSON</span>
+            <button class="copy-btn" type="button" data-copy="ex-historique" aria-label="Copier l’exemple d’historique">Copier</button>
+          </div>
+          <pre><code id="ex-historique">{
+  "symbole": "ONTBF",
+  "nombre": 2,
+  "premiere_seance": "2026-11-06",
+  "derniere_seance": "2026-11-09",
+  "seances": [
+    { "jour": "2026-11-06", "cours_veille": 15000, "ouverture": 15200, "cloture": 15100, "variation_pct": 0.67, "volume": 1000 },
+    { "jour": "2026-11-09", "cours_veille": 15100, "ouverture": 15100, "cloture": 15300, "variation_pct": 1.32, "volume": 820 }
+  ]
+}</code></pre>
+        </div>
+      </article>
+
+      <article class="endpoint">
         <h3><span class="method">GET</span> <code>/api/visites</code></h3>
         <p class="muted">
           Statistiques de fréquentation agrégées et anonymes : vues totales, visiteurs uniques

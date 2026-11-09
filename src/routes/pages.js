@@ -4,6 +4,7 @@ const express = require('express');
 
 const { escapeHtml, formatDuration } = require('../utils/html');
 const seo = require('../seo');
+const { performance, priceChart, formatDay } = require('../history');
 
 const VIEWS_DIR = path.join(__dirname, '..', 'views');
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
@@ -90,7 +91,107 @@ function trendSentence(action) {
   return `en ${variation > 0 ? 'hausse' : 'baisse'} de ${seo.formatNumber(Math.abs(variation))} % par rapport à la veille`;
 }
 
-function actionPage({ action, actions, data, updatedAt }) {
+function historySection({ action, history }) {
+  const symbole = escapeHtml(action.symbole);
+
+  if (history.length < 2) {
+    const since = history[0] ? ` depuis le ${escapeHtml(formatDay(history[0].day))}` : '';
+    return `
+    <section class="panel prose" aria-labelledby="historique-title">
+      <h2 id="historique-title">Historique du cours de ${symbole}</h2>
+      <p class="muted">
+        L’historique de ${symbole} est enregistré${since}, une fois par séance.
+        Le graphique et les performances apparaîtront dès la prochaine séance.
+      </p>
+    </section>`;
+  }
+
+  const perf = performance(history);
+  const badge = (value) =>
+    `<span class="badge ${seo.variationClass(value)}">${seo.formatVariation(value)}</span>`;
+  const periodRows = perf.periods
+    .filter((period) => period.variation !== null)
+    .map(
+      (period) => `<tr>
+            <th scope="row">${escapeHtml(period.label)}</th>
+            <td class="numeric">${badge(period.variation)}</td>
+          </tr>`
+    );
+  periodRows.push(`<tr>
+            <th scope="row">Depuis le ${escapeHtml(formatDay(perf.since.day))}</th>
+            <td class="numeric">${badge(perf.since.variation)}</td>
+          </tr>`);
+
+  const recent = history
+    .slice(-15)
+    .reverse()
+    .map(
+      (row) => `<tr>
+            <td>${escapeHtml(formatDay(row.day))}</td>
+            <td class="numeric">${seo.formatNumber(row.cloture)}</td>
+            <td class="numeric">${badge(row.variation_pct)}</td>
+            <td class="numeric">${seo.formatVolume(row.volume)}</td>
+          </tr>`
+    )
+    .join('\n          ');
+
+  return `
+    <section class="panel" aria-labelledby="historique-title">
+      <div class="panel-head">
+        <div>
+          <h2 id="historique-title">Historique du cours de ${symbole}</h2>
+          <p class="muted small">Clôture en FCFA, ${perf.since.sessions} séances depuis le ${escapeHtml(formatDay(perf.since.day))}.</p>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        ${priceChart(history, { symbole: action.symbole })}
+      </div>
+
+      <div class="history-grid">
+        <div>
+          <h3>Performance</h3>
+          <div class="table-wrap">
+            <table>
+              <caption class="visually-hidden">Performance de ${symbole} par période</caption>
+              <tbody>
+          ${periodRows.join('\n          ')}
+              </tbody>
+            </table>
+          </div>
+          <p class="muted small">
+            Plus haut : <strong>${seo.formatNumber(perf.since.high)} FCFA</strong> ·
+            plus bas : <strong>${seo.formatNumber(perf.since.low)} FCFA</strong> (en clôture, sur la période).
+          </p>
+        </div>
+
+        <div>
+          <h3>Dernières séances</h3>
+          <div class="table-wrap">
+            <table>
+              <caption class="visually-hidden">Dernières séances de ${symbole}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Séance</th>
+                  <th scope="col" class="numeric">Clôture</th>
+                  <th scope="col" class="numeric">Variation</th>
+                  <th scope="col" class="numeric">Volume</th>
+                </tr>
+              </thead>
+              <tbody>
+          ${recent}
+              </tbody>
+            </table>
+          </div>
+          <p class="muted small">
+            Historique complet en <a href="/api/historique?symbole=${encodeURIComponent(action.symbole)}">JSON</a>
+            ou en <a href="/api/historique?symbole=${encodeURIComponent(action.symbole)}&amp;format=csv">CSV</a>.
+          </p>
+        </div>
+      </div>
+    </section>`;
+}
+
+function actionPage({ action, actions, data, updatedAt, history = [] }) {
   const name = action.nom || action.symbole;
   const variationRank = rank(actions, action.symbole, 'variation_pct');
   const volumeRank = rank(actions, action.symbole, 'volume');
@@ -159,6 +260,8 @@ function actionPage({ action, actions, data, updatedAt }) {
       <p><a class="btn btn-ghost" href="/">Voir toutes les actions de la BRVM</a></p>
     </section>
 
+    ${historySection({ action, history })}
+
     <section class="panel" aria-labelledby="autres-title">
       <h2 id="autres-title">Autres actions de la BRVM</h2>
       <ul class="symbol-list">
@@ -180,7 +283,7 @@ function xmlEscape(value) {
     .replace(/"/g, '&quot;');
 }
 
-function createPagesRouter({ config, cache }) {
+function createPagesRouter({ config, cache, db }) {
   const router = express.Router();
   const templates = new Map();
 
@@ -307,7 +410,16 @@ function createPagesRouter({ config, cache }) {
     return sendHtml(
       res,
       200,
-      layout({ head, body: actionPage({ action, actions, data: result.data, updatedAt: result.updatedAt }) })
+      layout({
+        head,
+        body: actionPage({
+          action,
+          actions,
+          data: result.data,
+          updatedAt: result.updatedAt,
+          history: db.getQuoteHistory(action.symbole)
+        })
+      })
     );
   });
 

@@ -4,6 +4,7 @@ const { openDatabase } = require('./src/db');
 const { createScraper } = require('./src/scraper');
 const { createCoursCache } = require('./src/cache');
 const { createApp } = require('./src/app');
+const { sessionDay } = require('./src/history');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -21,14 +22,31 @@ function start() {
 
   const db = openDatabase(config.dataDir, logger);
   const scraper = createScraper({ config, logger });
+
+  // Historique : chaque scraping réussi met à jour la ligne du jour de chaque action.
+  function recordHistory(data, at = Date.now()) {
+    if (!Array.isArray(data?.actions) || data.actions.length === 0) return;
+    const day = sessionDay(data, at);
+    db.recordQuotes(day, data.actions, at);
+  }
+
   const cache = createCoursCache({
     db,
     scraper: scraper.scrape,
     logger,
     ttlMs: config.cacheTtlMs,
     maxStaleMs: config.cacheMaxStaleMs,
-    failureCooldownMs: config.scrapeFailureCooldownMs
+    failureCooldownMs: config.scrapeFailureCooldownMs,
+    onRefresh: recordHistory
   });
+
+  // Les données déjà en cache au démarrage alimentent aussi l'historique.
+  try {
+    const snapshot = cache.peek();
+    if (snapshot) recordHistory(snapshot.data, snapshot.updatedAt);
+  } catch (error) {
+    logger.warn('Historique : enregistrement initial impossible', { error: error.message });
+  }
   const app = createApp({ config, db, cache, logger });
 
   const server = app.listen(config.port, config.host, () => {

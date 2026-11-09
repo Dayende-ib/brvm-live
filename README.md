@@ -182,6 +182,12 @@ Une seule action. Renvoie `404` avec la liste des symboles disponibles si inconn
 Export CSV (UTF-8 avec BOM, compatible Excel/Sheets). Les cellules texte sont protégées
 contre l'injection de formules.
 
+### `GET /api/historique?symbole=ONTBF`
+
+Historique des séances d'une action (une ligne par jour, la plus ancienne en premier) :
+`jour`, `cours_veille`, `ouverture`, `cloture`, `variation_pct`, `volume`. Paramètres
+optionnels : `jours=30` (N derniers jours) et `format=csv`. `404` si aucun historique.
+
 ### `GET /api/visites`
 
 Statistiques agrégées : vues totales, visiteurs uniques cumulés (par jour), aujourd'hui et
@@ -205,9 +211,12 @@ curl -H "Authorization: Bearer $CLE" https://brvm.example.com/api/cours
   résumé du marché dans son HTML (modèles dans `src/views/`). Les robots voient le contenu sans
   exécuter JavaScript ; `public/app.js` prend ensuite le relais (tri, recherche, favoris).
 - **Une fiche par action** sur `/action/<SYMBOLE>` (ex. `/action/SNTS`) : titre et description
-  dédiés, chiffres clés, résumé de la séance, classement du jour et liens vers les autres actions.
+  dédiés, chiffres clés, résumé de la séance, classement du jour, **historique** (graphique SVG
+  rendu côté serveur, performance sur 1 semaine / 1 mois / 3 mois / 1 an, dernières séances)
+  et liens vers les autres actions.
   Une URL en minuscules redirige (301) vers la version en majuscules.
-- **Balises** : `<title>`, `description`, URL canonique, Open Graph et Twitter sur chaque page publique ;
+- **Balises** : `<title>`, `description`, URL canonique, Open Graph et Twitter (image de partage
+  `public/og-image.png`) sur chaque page publique ;
   `noindex` sur les pages de compte, d'erreur et d'administration, `X-Robots-Tag: noindex` sur `/api/*`.
 - **Données structurées** (JSON-LD) : `WebSite` et `Dataset` sur l'accueil (avec les téléchargements
   JSON et CSV), `BreadcrumbList` et `WebPage` sur les fiches.
@@ -217,6 +226,17 @@ curl -H "Authorization: Bearer $CLE" https://brvm.example.com/api/cours
 Après la mise en ligne : définir `PUBLIC_URL`, déclarer le site dans
 [Google Search Console](https://search.google.com/search-console) et
 [Bing Webmaster Tools](https://www.bing.com/webmasters), puis y soumettre `https://votre-domaine/sitemap.xml`.
+
+## Historique des cours
+
+- Table SQLite `quotes` : une ligne par action et par séance (clé `symbole` + `day`).
+- Alimentée à chaque scraping réussi : la ligne du jour est mise à jour jusqu'à la clôture,
+  sans doublon. Les données déjà en cache au démarrage sont aussi enregistrées.
+- Le jour de séance est lu dans la mention « Dernière mise à jour » de brvm.org
+  (ex. « Vendredi, 6 novembre, 2026 - 22:45 » → `2026-11-06`), à défaut la date de récupération.
+- Aucune purge : environ 48 lignes par séance, soit quelques centaines de Ko par an.
+- L'historique **commence au déploiement** de cette version : les graphiques apparaissent à partir
+  de la deuxième séance enregistrée. Il est inclus dans la sauvegarde du volume SQLite.
 
 ## Compteur de visites
 

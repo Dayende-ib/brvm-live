@@ -2,6 +2,7 @@ const { escapeHtml } = require('./utils/html');
 
 const SITE_NAME = 'BRVM Live';
 const SOURCE_URL = 'https://www.brvm.org/fr/cours-actions/0';
+const OG_IMAGE = { path: '/og-image.png', width: 1546, height: 798, alt: 'Tableau des cours des actions de la BRVM sur BRVM Live' };
 
 const numberFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const integerFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
@@ -54,6 +55,8 @@ function jsonLd(data) {
 }
 
 function headTags({ title, description, url, type = 'website', robots = 'index, follow', structuredData = [] }) {
+  const origin = new URL(url).origin;
+  const image = `${origin}${OG_IMAGE.path}`;
   const tags = [
     `<title>${escapeHtml(title)}</title>`,
     `<meta name="description" content="${escapeHtml(description)}">`,
@@ -65,9 +68,16 @@ function headTags({ title, description, url, type = 'website', robots = 'index, 
     `<meta property="og:title" content="${escapeHtml(title)}">`,
     `<meta property="og:description" content="${escapeHtml(description)}">`,
     `<meta property="og:url" content="${escapeHtml(url)}">`,
-    `<meta name="twitter:card" content="summary">`,
+    `<meta property="og:image" content="${escapeHtml(image)}">`,
+    `<meta property="og:image:type" content="image/png">`,
+    `<meta property="og:image:width" content="${OG_IMAGE.width}">`,
+    `<meta property="og:image:height" content="${OG_IMAGE.height}">`,
+    `<meta property="og:image:alt" content="${escapeHtml(OG_IMAGE.alt)}">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${escapeHtml(title)}">`,
     `<meta name="twitter:description" content="${escapeHtml(description)}">`,
+    `<meta name="twitter:image" content="${escapeHtml(image)}">`,
+    `<meta name="twitter:image:alt" content="${escapeHtml(OG_IMAGE.alt)}">`,
     ...structuredData.map(jsonLd)
   ];
   return tags.join('\n  ');
@@ -184,6 +194,7 @@ function breadcrumbLd(baseUrl, items) {
 module.exports = {
   SITE_NAME,
   SOURCE_URL,
+  OG_IMAGE,
   formatNumber,
   formatVolume,
   formatVariation,
