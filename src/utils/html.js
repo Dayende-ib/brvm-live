@@ -14,12 +14,12 @@ const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
 });
 
 function formatDate(ms) {
-  if (!ms) return '—';
+  if (!ms) return '-';
   return `${dateFormatter.format(new Date(ms))} UTC`;
 }
 
 function formatDuration(ms) {
-  if (ms == null) return '—';
+  if (ms == null) return '-';
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds} s`;
   const minutes = Math.round(seconds / 60);

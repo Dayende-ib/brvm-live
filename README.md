@@ -93,13 +93,13 @@ laissée vide (`CLE=`) est traitée comme absente.
 | `NODE_ENV` | `development` | `production` active HSTS, cookies `Secure` et logs JSON. |
 | `PORT` / `HOST` | `3000` / `0.0.0.0` | Écoute HTTP. |
 | `DATA_DIR` | `./data` | Répertoire du fichier SQLite. |
-| `SESSION_SECRET` | — | **Requis en production**, 32 caractères minimum. |
+| `SESSION_SECRET` | - | **Requis en production**, 32 caractères minimum. |
 | `ADMIN_USERNAME` | `admin` | Identifiant de l'administration. |
-| `ADMIN_PASSWORD_HASH` | — | Hash scrypt généré par `npm run hash-password`. |
-| `ADMIN_PASSWORD` | — | Mot de passe en clair (développement uniquement). |
+| `ADMIN_PASSWORD_HASH` | - | Hash scrypt généré par `npm run hash-password`. |
+| `ADMIN_PASSWORD` | - | Mot de passe en clair (développement uniquement). |
 | `SESSION_TTL_MS` | `28800000` | Durée de session admin (8 h). |
 | `USER_SESSION_TTL_MS` | `604800000` | Durée de session des comptes utilisateurs (7 jours). |
-| `API_KEYS` | — | Clés séparées par des virgules. |
+| `API_KEYS` | - | Clés séparées par des virgules. |
 | `API_KEYS_REQUIRED` | `false` | Si `true`, `/api/*` exige une clé (voir avertissement plus bas). |
 | `ALLOWED_ORIGINS` | `*` | Origines CORS séparées par des virgules. |
 | `TRUST_PROXY` | `1` | Nombre de proxies de confiance devant l'application. |
@@ -216,6 +216,13 @@ curl -H "Authorization: Bearer $CLE" https://brvm.example.com/api/cours
   l'en-tête `X-CSRF-Token` fourni par `/api/session`.
 - Inscriptions limitées par IP (seules les inscriptions réussies comptent), échecs de connexion
   limités par IP.
+- Section « Sécurité » de `/compte` :
+  - **changer de mot de passe** (mot de passe actuel requis ; les autres appareils sont déconnectés) ;
+  - **déconnecter les autres appareils** (en cas d'appareil perdu ou partagé) ;
+  - **supprimer le compte** (nom d'utilisateur recopié + mot de passe) : le compte, l'email et
+    les favoris sont effacés définitivement.
+- Chaque compte a une version de session en base : l'incrémenter invalide immédiatement tous
+  les cookies émis avant (changement de mot de passe, « déconnecter les autres appareils »).
 
 ## Administration
 
@@ -295,10 +302,16 @@ Le script `update-brvm.sh` fait tout en une commande depuis le dossier du projet
 ./update-brvm.sh
 ```
 
-Il vérifie la présence de `.env`, fait un `git pull --ff-only`, reconstruit et redémarre le
-conteneur, nettoie les anciennes images puis attend que le healthcheck Docker passe à
-`healthy` (60 s max). En cas d'échec, il affiche les derniers logs et sort avec un code
-d'erreur. Équivalent manuel :
+Il vérifie la présence de `.env`, puis compare le commit local à celui de GitHub :
+
+- **nouveaux commits** : il les affiche, fait un `git pull --ff-only`, reconstruit l'image,
+  redémarre le conteneur et nettoie les anciennes images ;
+- **déjà à jour** : il ne reconstruit rien ; il relance seulement le conteneur s'il est arrêté,
+  ou le recrée si `.env` a changé ;
+- `./update-brvm.sh --force` reconstruit l'image même sans nouveau commit.
+
+Il attend ensuite que le healthcheck Docker passe à `healthy` (60 s max). En cas d'échec, il
+affiche les derniers logs et sort avec un code d'erreur. Équivalent manuel :
 
 ```bash
 git pull --ff-only

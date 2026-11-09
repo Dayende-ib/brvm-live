@@ -152,7 +152,7 @@ function createApp({ config, db, cache, logger }) {
   app.use('/api/visites', limiters.visitsLimiter);
   app.use('/api', createApiRouter({ config, cache, db, logger }));
 
-  app.use('/admin', createAdminRouter({ config, cache, db, session, logger, limiters }));
+  app.use('/admin', createAdminRouter({ config, cache, db, session, authCsrf, logger, limiters }));
 
   app.use(
     express.static(publicDir, {

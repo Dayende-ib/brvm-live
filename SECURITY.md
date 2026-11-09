@@ -1,4 +1,4 @@
-# Politique de sécurité — BRVM Live
+# Politique de sécurité - BRVM Live
 
 ## Signaler une vulnérabilité
 
@@ -19,7 +19,8 @@ Réponse sous 48 h ouvrées. L'identité du rapporteur reste confidentielle.
 - Comparaison à temps constant (`crypto.timingSafeEqual`).
 - Session stateless signée en **HMAC-SHA256**, cookie `HttpOnly`, `SameSite=Strict`,
   `Secure` en production, durée de vie limitée (8 h par défaut).
-- Vérification de l'en-tête `Origin` et jeton **CSRF** sur toutes les actions POST admin.
+- Vérification de l'en-tête `Origin` et jeton **CSRF** signé sur toutes les actions POST admin
+  (jeton distinct du cookie de session, qui n'apparaît jamais dans le HTML).
 - Limitation des tentatives de connexion (10 échecs / 15 min / IP par défaut).
 - Aucun compte par défaut : si `ADMIN_PASSWORD_HASH`/`ADMIN_PASSWORD` est absent,
   l'administration est désactivée.
@@ -33,7 +34,13 @@ Réponse sous 48 h ouvrées. L'identité du rapporteur reste confidentielle.
 - Formulaires : vérification de l'en-tête `Origin` + jeton CSRF signé (cookie et champ caché).
 - API `/api/favoris` : jeton CSRF en double soumission (cookie + en-tête `X-CSRF-Token`).
 - Redirection après connexion limitée aux chemins locaux (pas de redirection ouverte).
-- Limites par IP : inscriptions réussies (5 / 15 min), échecs de connexion (15 / 15 min).
+- Limites par IP : inscriptions réussies (5 / 15 min), échecs de connexion (15 / 15 min) ;
+  les échecs de mot de passe au changement ou à la suppression de compte comptent dans la même limite.
+- Révocation : chaque compte porte une version de session en base, incluse dans le cookie signé.
+  Changer de mot de passe ou « déconnecter les autres appareils » l'incrémente et invalide
+  immédiatement les autres sessions.
+- Suppression de compte en libre-service (confirmation par nom d'utilisateur + mot de passe) :
+  compte, email et favoris effacés.
 
 ### 3. API
 
@@ -86,8 +93,11 @@ Réponse sous 48 h ouvrées. L'identité du rapporteur reste confidentielle.
 - Le scraping dépend de la structure HTML de brvm.org ; une refonte du site peut nécessiter
   une adaptation de `src/scraper.js` (les erreurs sont journalisées et le cache de secours prend le relais).
 - `API_KEYS_REQUIRED=true` coupe aussi l'accès de la page publique.
-- Les sessions sont stateless : la déconnexion efface le cookie mais ne révoque pas un jeton
-  déjà copié. Seul le changement de `SESSION_SECRET` invalide toutes les sessions.
+- La session **admin** est stateless : la déconnexion efface le cookie mais ne révoque pas un
+  jeton déjà copié (valable jusqu'à 8 h). Changer `SESSION_SECRET` invalide toutes les sessions.
+  Les sessions des **comptes utilisateurs**, elles, sont révocables (voir plus haut).
+- La déconnexion simple d'un compte utilisateur ne ferme que la session courante ; utiliser
+  « Déconnecter mes autres appareils » pour les autres.
 
 ## Procédure en cas d'incident
 

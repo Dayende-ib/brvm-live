@@ -127,7 +127,9 @@ function createUserSessionManager(config) {
     create(res, user) {
       return session.create(res, {
         sub: String(user.id),
-        username: user.username
+        username: user.username,
+        // Version de session du compte : l'incrémenter en base invalide tous les cookies émis avant.
+        ver: Number(user.sessionVersion ?? user.session_version ?? 0)
       });
     },
     read(req) {
@@ -146,7 +148,8 @@ function publicUser(row) {
     username: row.username,
     email: row.email,
     createdAt: Number(row.created_at),
-    lastLoginAt: row.last_login_at == null ? null : Number(row.last_login_at)
+    lastLoginAt: row.last_login_at == null ? null : Number(row.last_login_at),
+    sessionVersion: Number(row.session_version ?? 0)
   };
 }
 
@@ -157,7 +160,8 @@ function createUserLoader({ db, session }) {
 
     if (req.userSession) {
       const row = db.findUserById(Number(req.userSession.sub));
-      if (row) {
+      const sameVersion = row && Number(row.session_version ?? 0) === Number(req.userSession.ver ?? 0);
+      if (row && sameVersion) {
         req.user = publicUser(row);
       } else {
         session.clear(res);
@@ -177,12 +181,11 @@ function requireAdmin(session) {
       return res.status(401).json({ erreur: 'Authentification requise.' });
     }
     req.admin = data;
-    req.sessionToken = req.cookies[session.cookieName];
     return next();
   };
 }
 
-function requireUser(session) {
+function requireUser(_session) {
   return function userGuard(req, res, next) {
     if (!req.user) {
       if (!req.path.startsWith('/api') && req.accepts('html')) {
@@ -191,7 +194,6 @@ function requireUser(session) {
       }
       return res.status(401).json({ erreur: 'Connexion requise.' });
     }
-    req.sessionToken = req.cookies[session.cookieName];
     return next();
   };
 }
@@ -204,7 +206,7 @@ function reject(req, res, status, message) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Requête refusée — BRVM Live</title>
+  <title>Requête refusée - BRVM Live</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -237,14 +239,6 @@ function verifySameOrigin(req, res, next) {
     return reject(req, res, 403, 'Origine de la requête invalide.');
   }
 
-  return next();
-}
-
-function verifyCsrf(req, res, next) {
-  const token = req.body?._csrf;
-  if (!token || !req.sessionToken || !timingSafeEqualString(token, req.sessionToken)) {
-    return reject(req, res, 403, 'Jeton CSRF invalide. Rechargez la page.');
-  }
   return next();
 }
 
@@ -315,7 +309,6 @@ module.exports = {
   requireAdmin,
   requireUser,
   verifySameOrigin,
-  verifyCsrf,
   verifyApiCsrf,
   publicUser
 };

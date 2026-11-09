@@ -43,17 +43,17 @@
   }
 
   function formatNumber(value) {
-    if (value === null || value === undefined || Number.isNaN(value)) return '—';
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
     return numberFormatter.format(value);
   }
 
   function formatVolume(value) {
-    if (value === null || value === undefined || Number.isNaN(value)) return '—';
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
     return integerFormatter.format(value);
   }
 
   function formatVariation(value) {
-    if (value === null || value === undefined || Number.isNaN(value)) return '—';
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
     const sign = value > 0 ? '+' : '';
     return `${sign}${numberFormatter.format(value)} %`;
   }
@@ -119,7 +119,7 @@
   function renderUpdated() {
     const label = $('updated');
     if (!state.loadedAt) {
-      label.textContent = '—';
+      label.textContent = '-';
       return;
     }
 
@@ -324,7 +324,7 @@
       const today = data.aujourd_hui || { vues: 0, uniques: 0 };
       $('visits').textContent =
         `Aujourd’hui : ${integerFormatter.format(today.vues)} vue(s) · ` +
-        `${integerFormatter.format(today.uniques)} visiteur(s) unique(s) — ` +
+        `${integerFormatter.format(today.uniques)} visiteur(s) unique(s) - ` +
         `total ${integerFormatter.format(data.vues_total)} vues.`;
     } catch {
       $('visits').textContent = '';

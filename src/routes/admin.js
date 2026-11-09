@@ -1,6 +1,6 @@
 const express = require('express');
 const { verifyPassword, timingSafeEqualString } = require('../security');
-const { requireAdmin, verifySameOrigin, verifyCsrf } = require('../middleware/auth');
+const { requireAdmin, verifySameOrigin } = require('../middleware/auth');
 const { todayUtc } = require('../middleware/visits');
 const { escapeHtml, formatDate, formatDuration } = require('../utils/html');
 
@@ -63,7 +63,7 @@ function loginPage({ error = '', username = '', enabled = true }) {
       </form>
       <p class="hint">Les tentatives de connexion sont limitées par IP.</p>
     </section>`;
-  return page({ title: 'Connexion — BRVM Live', body });
+  return page({ title: 'Connexion - BRVM Live', body });
 }
 
 function metricCard(label, value, detail = '') {
@@ -126,7 +126,7 @@ function adminPage({ config, cache, db, message, csrf: rawCsrf }) {
       ${metricCard('Visiteurs uniques', String(summary.uniquesTotal), 'cumul des uniques par jour')}
       ${metricCard('Aujourd’hui', String(summary.aujourdhui.vues), `${summary.aujourdhui.uniques} unique(s)`)}
       ${metricCard('Comptes', String(db.countUsers()), 'inscriptions publiques')}
-      ${metricCard('Actions en cache', status.present ? String(status.actions) : '0', status.present ? `MAJ source : ${status.maj || '—'}` : 'aucune donnée')}
+      ${metricCard('Actions en cache', status.present ? String(status.actions) : '0', status.present ? `MAJ source : ${status.maj || '-'}` : 'aucune donnée')}
     </section>
 
     <section class="panel">
@@ -143,7 +143,7 @@ function adminPage({ config, cache, db, message, csrf: rawCsrf }) {
         <div><dt>Âge</dt><dd>${escapeHtml(formatDuration(status.ageMs))}</dd></div>
         <div><dt>TTL</dt><dd>${escapeHtml(formatDuration(config.cacheTtlMs))}</dd></div>
         <div><dt>Données de secours max.</dt><dd>${escapeHtml(formatDuration(config.cacheMaxStaleMs))}</dd></div>
-        <div><dt>Dernière MAJ source</dt><dd>${escapeHtml(status.maj || '—')}</dd></div>
+        <div><dt>Dernière MAJ source</dt><dd>${escapeHtml(status.maj || '-')}</dd></div>
       </dl>
     </section>
 
@@ -185,10 +185,10 @@ function adminPage({ config, cache, db, message, csrf: rawCsrf }) {
         <div><dt>Rate limit API</dt><dd>${config.rateLimits.api} anonyme / ${config.rateLimits.apiKey} avec clé par ${escapeHtml(formatDuration(config.rateLimits.windowMs))}</dd></div>
       </dl>
     </section>`;
-  return page({ title: 'Administration — BRVM Live', body, admin: true });
+  return page({ title: 'Administration - BRVM Live', body, admin: true });
 }
 
-function createAdminRouter({ config, cache, db, session, logger, limiters }) {
+function createAdminRouter({ config, cache, db, session, authCsrf, logger, limiters }) {
   const router = express.Router();
 
   router.use((req, res, next) => {
@@ -227,12 +227,12 @@ function createAdminRouter({ config, cache, db, session, logger, limiters }) {
 
   router.use(requireAdmin(session));
 
-  router.post('/logout', verifySameOrigin, verifyCsrf, (req, res) => {
+  router.post('/logout', verifySameOrigin, authCsrf.verify, (req, res) => {
     session.clear(res);
     return res.redirect(303, '/admin/login');
   });
 
-  router.post('/cache/refresh', verifySameOrigin, verifyCsrf, async (req, res, next) => {
+  router.post('/cache/refresh', verifySameOrigin, authCsrf.verify, async (req, res, next) => {
     try {
       const result = await cache.get({ force: true });
       return res.redirect(303, `/admin?refresh=${result.stale ? 'stale' : 'ok'}`);
@@ -251,7 +251,8 @@ function createAdminRouter({ config, cache, db, session, logger, limiters }) {
         cache,
         db,
         message,
-        csrf: req.sessionToken
+        // Jeton CSRF signé et indépendant du cookie de session (qui ne doit jamais finir dans le HTML).
+        csrf: authCsrf.ensure(req, res)
       })
     );
   });

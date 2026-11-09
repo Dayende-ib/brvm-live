@@ -38,6 +38,9 @@ const MIGRATIONS = [
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
   CREATE INDEX idx_favorites_user ON favorites(user_id);
+  `,
+  `
+  ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0;
   `
 ];
 
@@ -113,6 +116,13 @@ function openDatabase(dataDir, logger) {
       'INSERT OR IGNORE INTO favorites (user_id, symbole, created_at) VALUES (?, ?, ?)'
     ),
     removeFavorite: db.prepare('DELETE FROM favorites WHERE user_id = ? AND symbole = ?'),
+    updatePassword: db.prepare(
+      'UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?'
+    ),
+    bumpSessionVersion: db.prepare(
+      'UPDATE users SET session_version = session_version + 1 WHERE id = ?'
+    ),
+    deleteUser: db.prepare('DELETE FROM users WHERE id = ?'),
     countUsers: db.prepare('SELECT COUNT(*) AS total FROM users'),
     ping: db.prepare('SELECT 1 AS ok')
   };
@@ -204,6 +214,21 @@ function openDatabase(dataDir, logger) {
     return Number(result.changes || 0) > 0;
   }
 
+  // Change le mot de passe et invalide toutes les sessions existantes du compte.
+  function updatePassword(id, passwordHash) {
+    statements.updatePassword.run(passwordHash, id);
+  }
+
+  function bumpSessionVersion(id) {
+    statements.bumpSessionVersion.run(id);
+  }
+
+  // Les favoris sont supprimés en cascade (FOREIGN KEY ... ON DELETE CASCADE).
+  function deleteUser(id) {
+    const result = statements.deleteUser.run(id);
+    return Number(result.changes || 0) > 0;
+  }
+
   function countUsers() {
     return Number(statements.countUsers.get().total || 0);
   }
@@ -233,6 +258,9 @@ function openDatabase(dataDir, logger) {
     listFavorites,
     addFavorite,
     removeFavorite,
+    updatePassword,
+    bumpSessionVersion,
+    deleteUser,
     countUsers,
     ping,
     close

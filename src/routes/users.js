@@ -2,7 +2,7 @@ const express = require('express');
 const { z } = require('zod');
 const { hashPassword, verifyPassword } = require('../security');
 const { requireUser, verifySameOrigin, verifyApiCsrf } = require('../middleware/auth');
-const { escapeHtml } = require('../utils/html');
+const { escapeHtml, formatDuration } = require('../utils/html');
 
 const numberFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const integerFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
@@ -50,6 +50,36 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Indiquez votre mot de passe.').max(200),
   next: z.string().max(300).optional()
 });
+
+const passwordChangeSchema = z
+  .object({
+    current: z.string().min(1, 'Indiquez votre mot de passe actuel.').max(200),
+    password: z
+      .string()
+      .min(10, 'Le nouveau mot de passe doit contenir au moins 10 caractères.')
+      .max(200, 'Le mot de passe ne peut pas dépasser 200 caractères.'),
+    confirm: z.string()
+  })
+  .refine((data) => data.password === data.confirm, {
+    message: 'Les nouveaux mots de passe ne correspondent pas.',
+    path: ['confirm']
+  })
+  .refine((data) => data.password !== data.current, {
+    message: 'Le nouveau mot de passe doit être différent de l’actuel.',
+    path: ['password']
+  });
+
+const deleteAccountSchema = z.object({
+  password: z.string().min(1, 'Indiquez votre mot de passe pour confirmer.').max(200),
+  username: z.string().trim().min(1, 'Recopiez votre nom d’utilisateur pour confirmer.').max(30)
+});
+
+const ACCOUNT_MESSAGES = {
+  bienvenue: 'Bienvenue ! Votre compte est créé et vous êtes connecté.',
+  retire: 'Action retirée de vos favoris.',
+  'mot-de-passe': 'Mot de passe modifié. Vos autres appareils ont été déconnectés.',
+  sessions: 'Vos autres appareils ont été déconnectés.'
+};
 
 const favoriteSchema = z.object({
   symbole: z
@@ -116,7 +146,7 @@ function shell({ title, description, body, current, user, csrf, bodyClass = '' }
   <meta name="description" content="${escapeHtml(description)}">
   <meta name="theme-color" content="#020617">
   <meta name="robots" content="noindex">
-  <title>${escapeHtml(title)} — BRVM Live</title>
+  <title>${escapeHtml(title)} - BRVM Live</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -258,12 +288,12 @@ function loginPage({ user, csrf, error = '', login = '', next = '/compte' }) {
 }
 
 function formatNumber(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
   return numberFormatter.format(Number(value));
 }
 
 function formatVolume(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
   return integerFormatter.format(Number(value));
 }
 
@@ -275,7 +305,7 @@ function variationClass(value) {
 
 function formatVariation(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return '—';
+  if (!Number.isFinite(number)) return '-';
   const sign = number > 0 ? '+' : '';
   return `${sign}${numberFormatter.format(number)} %`;
 }
@@ -297,7 +327,7 @@ function favoriteRows(favorites, bySymbol) {
       return `
         <tr>
           <td class="symbole">${escapeHtml(favorite.symbole)}</td>
-          <td class="nom">${escapeHtml(action?.nom || '—')}</td>
+          <td class="nom">${escapeHtml(action?.nom || '-')}</td>
           <td class="numeric">${formatVolume(action?.volume)}</td>
           <td class="numeric">${formatNumber(action?.cloture)}</td>
           <td class="numeric"><span class="badge ${variationClass(variation)}">${formatVariation(variation)}</span></td>
@@ -331,15 +361,76 @@ function favoriteRows(favorites, bySymbol) {
     </div>`;
 }
 
-function accountPage({ user, csrf, favorites, actions = [], dataError = false, message = '' }) {
+function securitySection({ user, csrf, errors = {} }) {
+  const token = escapeHtml(csrf);
+  return `
+    <section class="panel" id="securite" aria-labelledby="securite-title">
+      <h2 id="securite-title">Sécurité</h2>
+      <div class="security-grid">
+        <div class="security-block">
+          <h3>Changer de mot de passe</h3>
+          ${formAlert(errors.password)}
+          <form method="post" action="/compte/mot-de-passe" class="form-stack" autocomplete="on">
+            <input type="hidden" name="_csrf" value="${token}">
+            <input type="text" name="username" value="${escapeHtml(user.username)}" autocomplete="username" hidden>
+            <label for="current">Mot de passe actuel</label>
+            <input id="current" name="current" type="password" required maxlength="200" autocomplete="current-password">
+            <label for="new-password">Nouveau mot de passe</label>
+            <input id="new-password" name="password" type="password" required minlength="10" maxlength="200" autocomplete="new-password">
+            <p class="field-hint">10 caractères minimum. Vos autres appareils seront déconnectés.</p>
+            <label for="new-confirm">Confirmer le nouveau mot de passe</label>
+            <input id="new-confirm" name="confirm" type="password" required minlength="10" maxlength="200" autocomplete="new-password">
+            <button class="btn" type="submit">Modifier le mot de passe</button>
+          </form>
+        </div>
+
+        <div class="security-block">
+          <h3>Appareils connectés</h3>
+          <p class="muted small">
+            Une session reste ouverte sur chaque navigateur où vous vous êtes connecté.
+            En cas de doute (appareil perdu, ordinateur partagé), fermez-les toutes sauf celle-ci.
+          </p>
+          <form method="post" action="/compte/sessions" class="inline-form">
+            <input type="hidden" name="_csrf" value="${token}">
+            <button class="btn btn-ghost" type="submit">Déconnecter mes autres appareils</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel panel-danger" id="suppression" aria-labelledby="suppression-title">
+      <h2 id="suppression-title">Supprimer mon compte</h2>
+      <p class="muted small">
+        Votre compte, votre adresse email et vos favoris seront effacés définitivement.
+        Cette action est irréversible.
+      </p>
+      ${formAlert(errors.delete)}
+      <form method="post" action="/compte/supprimer" class="form-stack danger-form">
+        <input type="hidden" name="_csrf" value="${token}">
+        <label for="delete-username">Recopiez votre nom d’utilisateur (<strong>${escapeHtml(user.username)}</strong>)</label>
+        <input id="delete-username" name="username" type="text" required maxlength="30" autocomplete="off" spellcheck="false">
+        <label for="delete-password">Mot de passe</label>
+        <input id="delete-password" name="password" type="password" required maxlength="200" autocomplete="current-password">
+        <button class="btn btn-danger" type="submit">Supprimer définitivement mon compte</button>
+      </form>
+    </section>`;
+}
+
+function accountPage({
+  user,
+  csrf,
+  favorites,
+  actions = [],
+  dataError = false,
+  message = '',
+  errors = {},
+  sessionTtlMs
+}) {
   const bySymbol = new Map(actions.map((action) => [action.symbole, action]));
   const withCsrf = favorites.map((favorite) => ({ ...favorite, csrf }));
-  const alert =
-    message === 'bienvenue'
-      ? '<div class="alert alert-success" role="status">Bienvenue ! Votre compte est créé et vous êtes connecté.</div>'
-      : message === 'retire'
-        ? '<div class="alert alert-success" role="status">Action retirée de vos favoris.</div>'
-        : '';
+  const alert = ACCOUNT_MESSAGES[message]
+    ? `<div class="alert alert-success" role="status">${escapeHtml(ACCOUNT_MESSAGES[message])}</div>`
+    : '';
 
   const body = `
     <section class="account-head">
@@ -392,9 +483,11 @@ function accountPage({ user, csrf, favorites, actions = [], dataError = false, m
         <div><dt>Nom d’utilisateur</dt><dd>${escapeHtml(user.username)}</dd></div>
         <div><dt>Adresse email</dt><dd>${escapeHtml(user.email)}</dd></div>
         <div><dt>Identifiant</dt><dd class="mono">#${user.id}</dd></div>
-        <div><dt>Session</dt><dd>7 jours · cookie sécurisé</dd></div>
+        <div><dt>Session</dt><dd>${escapeHtml(formatDuration(sessionTtlMs))} · cookie sécurisé</dd></div>
       </dl>
-    </section>`;
+    </section>
+
+    ${securitySection({ user, csrf, errors })}`;
 
   return shell({
     title: 'Mon compte',
@@ -554,7 +647,7 @@ function createUsersRouter({ config, db, cache, session, authCsrf, limiters, log
         }
 
         db.touchLastLogin(row.id);
-        session.create(res, { id: Number(row.id), username: row.username });
+        session.create(res, row);
         logger?.info('Connexion utilisateur réussie', { id: Number(row.id), ip: req.ip });
         return res.redirect(303, safeNext(next));
       } catch (error) {
@@ -591,36 +684,136 @@ function createUsersRouter({ config, db, cache, session, authCsrf, limiters, log
     }
   );
 
+  async function renderAccount(req, res, { status = 200, message = '', errors = {} } = {}) {
+    const favorites = db.listFavorites(req.user.id);
+    let actions = [];
+    let dataError = false;
+
+    try {
+      const result = await cache.get();
+      actions = result.data.actions;
+      dataError = Boolean(result.stale);
+    } catch (error) {
+      dataError = true;
+      logger?.warn('Compte : cours indisponibles', { error: error.message });
+    }
+
+    return res.status(status).type('html').send(
+      accountPage({
+        user: req.user,
+        csrf: authCsrf.ensure(req, res),
+        favorites,
+        actions,
+        dataError,
+        message,
+        errors,
+        sessionTtlMs: config.userSessionTtlMs
+      })
+    );
+  }
+
   router.get('/compte', limiters.accountLimiter, requireUser(session), async (req, res, next) => {
     try {
-      const favorites = db.listFavorites(req.user.id);
-      let actions = [];
-      let dataError = false;
-
-      try {
-        const result = await cache.get();
-        actions = result.data.actions;
-        dataError = Boolean(result.stale);
-      } catch (error) {
-        dataError = true;
-        logger?.warn('Compte : cours indisponibles', { error: error.message });
-      }
-
       const message = typeof req.query.message === 'string' ? req.query.message : '';
-      return res.status(200).type('html').send(
-        accountPage({
-          user: req.user,
-          csrf: authCsrf.ensure(req, res),
-          favorites,
-          actions,
-          dataError,
-          message
-        })
-      );
+      return await renderAccount(req, res, { message });
     } catch (error) {
       return next(error);
     }
   });
+
+  // Les vérifications de mot de passe partagent la limite des échecs de connexion :
+  // seules les réponses en erreur (4xx) sont comptées.
+  router.post(
+    '/compte/mot-de-passe',
+    limiters.userLoginLimiter,
+    requireUser(session),
+    verifySameOrigin,
+    authCsrf.verify,
+    async (req, res, next) => {
+      try {
+        const parsed = passwordChangeSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return await renderAccount(req, res, {
+            status: 400,
+            errors: { password: firstIssue(parsed.error) }
+          });
+        }
+
+        const row = db.findUserById(req.user.id);
+        if (!row || !verifyPassword(parsed.data.current, row.password_hash)) {
+          logger?.warn('Changement de mot de passe refusé', { id: req.user.id, ip: req.ip });
+          return await renderAccount(req, res, {
+            status: 401,
+            errors: { password: 'Mot de passe actuel incorrect.' }
+          });
+        }
+
+        db.updatePassword(row.id, hashPassword(parsed.data.password));
+        const updated = db.findUserById(row.id);
+        session.create(res, updated);
+        logger?.info('Mot de passe modifié', { id: req.user.id, ip: req.ip });
+        return res.redirect(303, '/compte?message=mot-de-passe#securite');
+      } catch (error) {
+        return next(error);
+      }
+    }
+  );
+
+  router.post(
+    '/compte/sessions',
+    limiters.accountLimiter,
+    requireUser(session),
+    verifySameOrigin,
+    authCsrf.verify,
+    (req, res) => {
+      db.bumpSessionVersion(req.user.id);
+      session.create(res, db.findUserById(req.user.id));
+      logger?.info('Autres sessions révoquées', { id: req.user.id, ip: req.ip });
+      return res.redirect(303, '/compte?message=sessions#securite');
+    }
+  );
+
+  router.post(
+    '/compte/supprimer',
+    limiters.userLoginLimiter,
+    requireUser(session),
+    verifySameOrigin,
+    authCsrf.verify,
+    async (req, res, next) => {
+      try {
+        const parsed = deleteAccountSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return await renderAccount(req, res, {
+            status: 400,
+            errors: { delete: firstIssue(parsed.error) }
+          });
+        }
+
+        if (parsed.data.username.toLowerCase() !== req.user.username.toLowerCase()) {
+          return await renderAccount(req, res, {
+            status: 400,
+            errors: { delete: 'Le nom d’utilisateur recopié ne correspond pas.' }
+          });
+        }
+
+        const row = db.findUserById(req.user.id);
+        if (!row || !verifyPassword(parsed.data.password, row.password_hash)) {
+          logger?.warn('Suppression de compte refusée', { id: req.user.id, ip: req.ip });
+          return await renderAccount(req, res, {
+            status: 401,
+            errors: { delete: 'Mot de passe incorrect.' }
+          });
+        }
+
+        db.deleteUser(row.id);
+        session.clear(res);
+        logger?.info('Compte supprimé', { id: req.user.id, ip: req.ip });
+        return res.redirect(303, '/');
+      } catch (error) {
+        return next(error);
+      }
+    }
+  );
 
   router.post(
     '/compte/favoris/retirer',
@@ -712,4 +905,10 @@ function createUsersRouter({ config, db, cache, session, authCsrf, limiters, log
   return router;
 }
 
-module.exports = { createUsersRouter, signupSchema, loginSchema, safeNext };
+module.exports = {
+  createUsersRouter,
+  signupSchema,
+  loginSchema,
+  passwordChangeSchema,
+  safeNext
+};

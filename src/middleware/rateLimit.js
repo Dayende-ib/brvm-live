@@ -7,7 +7,7 @@ function limitPage(message, retrySeconds) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Trop de requêtes — BRVM Live</title>
+  <title>Trop de requêtes - BRVM Live</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
