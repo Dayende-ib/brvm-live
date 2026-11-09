@@ -40,7 +40,10 @@ src/
     users.js              comptes, favoris (/inscription, /connexion, /compte, /api/session, /api/favoris)
     admin.js              administration (/admin)
   utils/html.js           échappement et formatage HTML
-public/                   interface (HTML/CSS/JS sans build)
+  routes/pages.js         accueil, doc API, fiches actions, robots.txt, sitemap.xml (rendu serveur)
+  seo.js                  balises <head>, JSON-LD, rendu du tableau
+  views/                  modèles HTML de l'accueil et de la documentation API
+public/                   CSS, JS et fichiers statiques (sans build)
 scripts/hash-password.js  génération du hash du mot de passe admin
 tests/                    tests node:test + supertest
 deploy/nginx.conf.example exemple de reverse proxy
@@ -93,6 +96,7 @@ laissée vide (`CLE=`) est traitée comme absente.
 | `NODE_ENV` | `development` | `production` active HSTS, cookies `Secure` et logs JSON. |
 | `PORT` / `HOST` | `3000` / `0.0.0.0` | Écoute HTTP. |
 | `DATA_DIR` | `./data` | Répertoire du fichier SQLite. |
+| `PUBLIC_URL` | hôte de la requête | URL publique (`https://votre-domaine`), utilisée pour les URL canoniques, le sitemap et les balises de partage. **Recommandé en production.** |
 | `SESSION_SECRET` | - | **Requis en production**, 32 caractères minimum. |
 | `ADMIN_USERNAME` | `admin` | Identifiant de l'administration. |
 | `ADMIN_PASSWORD_HASH` | - | Hash scrypt généré par `npm run hash-password`. |
@@ -194,6 +198,25 @@ curl -H "X-API-Key: $CLE" https://brvm.example.com/api/cours
 # ou
 curl -H "Authorization: Bearer $CLE" https://brvm.example.com/api/cours
 ```
+
+## Référencement (SEO)
+
+- **Rendu côté serveur** : la page d'accueil contient directement le tableau des cours et le
+  résumé du marché dans son HTML (modèles dans `src/views/`). Les robots voient le contenu sans
+  exécuter JavaScript ; `public/app.js` prend ensuite le relais (tri, recherche, favoris).
+- **Une fiche par action** sur `/action/<SYMBOLE>` (ex. `/action/SNTS`) : titre et description
+  dédiés, chiffres clés, résumé de la séance, classement du jour et liens vers les autres actions.
+  Une URL en minuscules redirige (301) vers la version en majuscules.
+- **Balises** : `<title>`, `description`, URL canonique, Open Graph et Twitter sur chaque page publique ;
+  `noindex` sur les pages de compte, d'erreur et d'administration, `X-Robots-Tag: noindex` sur `/api/*`.
+- **Données structurées** (JSON-LD) : `WebSite` et `Dataset` sur l'accueil (avec les téléchargements
+  JSON et CSV), `BreadcrumbList` et `WebPage` sur les fiches.
+- **`/robots.txt`** et **`/sitemap.xml`** générés dynamiquement (accueil, documentation et toutes les
+  fiches, avec la date de dernière mise à jour).
+
+Après la mise en ligne : définir `PUBLIC_URL`, déclarer le site dans
+[Google Search Console](https://search.google.com/search-console) et
+[Bing Webmaster Tools](https://www.bing.com/webmasters), puis y soumettre `https://votre-domaine/sitemap.xml`.
 
 ## Compteur de visites
 

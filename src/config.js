@@ -17,6 +17,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   HOST: z.string().min(1).default('0.0.0.0'),
   DATA_DIR: z.string().min(1).default('./data'),
+  PUBLIC_URL: z.string().url().optional(),
 
   SOURCE_URL: z.string().url().default('https://www.brvm.org/fr/cours-actions/0'),
   CACHE_TTL_MS: z.coerce.number().int().min(0).default(30 * 60 * 1000),
@@ -125,6 +126,14 @@ function loadConfig(env = process.env) {
     warnings.push("Aucun mot de passe admin configuré : l'interface /admin est désactivée.");
   }
 
+  const publicUrl = cfg.PUBLIC_URL ? cfg.PUBLIC_URL.replace(/\/+$/, '') : null;
+  if (isProduction && !publicUrl) {
+    warnings.push(
+      'PUBLIC_URL absent : les URL canoniques, le sitemap et les balises de partage utiliseront ' +
+        "l'hôte de la requête. Définissez PUBLIC_URL=https://votre-domaine pour le référencement."
+    );
+  }
+
   const allowedOrigins = splitList(cfg.ALLOWED_ORIGINS);
   if (allowedOrigins.includes('*')) {
     warnings.push('ALLOWED_ORIGINS contient "*" : toutes les origines peuvent appeler l’API.');
@@ -136,6 +145,7 @@ function loadConfig(env = process.env) {
     port: cfg.PORT,
     host: cfg.HOST,
     dataDir: path.resolve(cfg.DATA_DIR),
+    publicUrl,
 
     sourceUrl: cfg.SOURCE_URL,
     cacheTtlMs: cfg.CACHE_TTL_MS,

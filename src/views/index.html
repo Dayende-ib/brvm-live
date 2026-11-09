@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Cours des actions de la BRVM, mis à jour depuis brvm.org avec un cache de 30 minutes.">
   <meta name="theme-color" content="#020617">
-  <title>BRVM Live - Cours des actions</title>
+  {{head}}
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -51,22 +50,25 @@
   <main id="contenu" class="container">
     <section class="hero">
       <p class="eyebrow">Bourse Régionale des Valeurs Mobilières</p>
-      <h1>Cours des actions</h1>
+      <h1>Cours des actions de la BRVM</h1>
       <p class="lede">
-        Données publiques de <a href="https://www.brvm.org/fr/cours-actions/0" target="_blank" rel="noopener noreferrer">brvm.org</a>,
-        mises en cache 30 minutes et rafraîchies automatiquement.
+        Cours de clôture, variations et volumes des {{total}} actions cotées à la Bourse d’Abidjan,
+        d’après les données publiques de <a href="https://www.brvm.org/fr/cours-actions/0" target="_blank" rel="noopener noreferrer">brvm.org</a>,
+        rafraîchies toutes les {{ttl}}.
       </p>
     </section>
 
-    <section id="metrics" class="metrics" aria-label="Résumé du marché"></section>
+    <section id="metrics" class="metrics" aria-label="Résumé du marché">
+      {{metrics}}
+    </section>
 
     <section class="panel" aria-labelledby="cours-title">
       <div class="panel-head">
         <div>
           <h2 id="cours-title">Marché des actions</h2>
-          <p id="updated" class="muted small">-</p>
+          <p id="updated" class="muted small">{{updated}}</p>
         </div>
-        <span id="result-count" class="muted small" aria-live="polite"></span>
+        <span id="result-count" class="muted small" aria-live="polite">{{count}}</span>
       </div>
 
       <div class="toolbar">
@@ -126,11 +128,39 @@
               </th>
             </tr>
           </thead>
-          <tbody id="tbody"></tbody>
+          <tbody id="tbody">
+            {{rows}}
+          </tbody>
         </table>
       </div>
 
       <p id="empty" class="empty" hidden>Aucune action ne correspond à cette recherche.</p>
+      <noscript>
+        <p class="muted small">
+          JavaScript est désactivé : le tableau ci-dessus n’est pas actualisé automatiquement et la
+          recherche, le tri et les favoris sont indisponibles. Rechargez la page pour les derniers cours.
+        </p>
+      </noscript>
+    </section>
+
+    <section class="panel prose" aria-labelledby="apropos-title">
+      <h2 id="apropos-title">À propos des cours de la BRVM</h2>
+      <p>
+        La <strong>Bourse Régionale des Valeurs Mobilières (BRVM)</strong>, basée à Abidjan, est la bourse
+        commune aux huit pays de l’UEMOA : Bénin, Burkina Faso, Côte d’Ivoire, Guinée-Bissau, Mali,
+        Niger, Sénégal et Togo. Les cours y sont exprimés en francs CFA (FCFA).
+      </p>
+      <p>
+        Pour chaque action, le tableau indique le <strong>cours de la veille</strong>, le cours
+        d’<strong>ouverture</strong>, le cours de <strong>clôture</strong>, la <strong>variation</strong>
+        en pourcentage par rapport à la veille et le <strong>volume</strong> de titres échangés.
+        Cliquez sur un symbole pour voir la fiche détaillée de l’action.
+      </p>
+      <p>
+        Les données sont aussi disponibles en <a href="/api/cours?format=csv">CSV</a> (Excel, Google Sheets)
+        et via une <a href="/api.html">API JSON gratuite</a>. Elles sont fournies à titre indicatif et ne
+        constituent pas un conseil en investissement.
+      </p>
     </section>
 
     <footer class="footer">

@@ -158,7 +158,8 @@
     star.title = isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris';
     star.addEventListener('click', () => toggleFavorite(action.symbole));
 
-    const label = document.createElement('span');
+    const label = document.createElement('a');
+    label.href = `/action/${encodeURIComponent(action.symbole)}`;
     label.textContent = action.symbole;
 
     cell.append(star, label);
@@ -255,6 +256,12 @@
     $('clear-search').hidden = !query;
   }
 
+  // Lignes déjà rendues par le serveur (référencement, affichage immédiat) : on les garde
+  // à l'écran jusqu'à l'arrivée des données JSON au lieu d'afficher le squelette.
+  function hasServerRows() {
+    return $('tbody').querySelector('tr:not(.skeleton-row)') !== null;
+  }
+
   function renderSkeleton() {
     const tbody = $('tbody');
     const fragment = document.createDocumentFragment();
@@ -280,7 +287,7 @@
     $('refresh').disabled = true;
     $('table').setAttribute('aria-busy', 'true');
     if (!silent) setStatus('loading', 'Actualisation…');
-    if (state.actions.length === 0) renderSkeleton();
+    if (state.actions.length === 0 && !hasServerRows()) renderSkeleton();
 
     try {
       const response = await fetch(API_URL, { headers: { Accept: 'application/json' } });
@@ -305,7 +312,7 @@
     } catch (error) {
       showAlert(`Impossible de charger les cours : ${error.message}.`);
       setStatus('error', 'Hors ligne');
-      if (state.actions.length === 0) {
+      if (state.actions.length === 0 && !hasServerRows()) {
         $('tbody').replaceChildren();
         $('empty').hidden = true;
       }
@@ -473,7 +480,7 @@
     }
   });
 
-  renderSkeleton();
+  if (!hasServerRows()) renderSkeleton();
   setStatus('loading', 'Chargement…');
   loadData();
   loadVisits();

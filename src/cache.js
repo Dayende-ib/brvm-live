@@ -118,6 +118,18 @@ function createCoursCache({
     return () => clearInterval(timer);
   }
 
+  // Lecture immédiate du cache, sans jamais déclencher de scraping (rendu des pages HTML).
+  function peek() {
+    const { row, age } = readRow();
+    if (!row) return null;
+    return {
+      data: row.value,
+      updatedAt: row.updatedAt,
+      ageMs: age,
+      stale: age >= ttlMs
+    };
+  }
+
   function status() {
     const row = db.getCache('cours');
     if (!row) return { present: false, updatedAt: null, ageMs: null };
@@ -130,7 +142,7 @@ function createCoursCache({
     };
   }
 
-  return { get, refreshIfDue, startAutoRefresh, status };
+  return { get, peek, refreshIfDue, startAutoRefresh, status };
 }
 
 module.exports = { createCoursCache };

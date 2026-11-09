@@ -17,6 +17,7 @@ const { createVisitTracker } = require('./middleware/visits');
 const { createApiRouter } = require('./routes/api');
 const { createAdminRouter } = require('./routes/admin');
 const { createUsersRouter } = require('./routes/users');
+const { createPagesRouter } = require('./routes/pages');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const VERSION = '2.0.0';
@@ -147,6 +148,11 @@ function createApp({ config, db, cache, logger }) {
     })
   );
 
+  // Les réponses JSON/CSV de l'API n'ont pas vocation à apparaître dans les résultats de recherche.
+  app.use('/api', (req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex');
+    next();
+  });
   app.use('/api', apiKeyAuth);
   app.use('/api/cours', limiters.apiLimiter);
   app.use('/api/visites', limiters.visitsLimiter);
@@ -154,9 +160,12 @@ function createApp({ config, db, cache, logger }) {
 
   app.use('/admin', createAdminRouter({ config, cache, db, session, authCsrf, logger, limiters }));
 
+  // Pages HTML rendues côté serveur (accueil, doc API, fiches actions, robots.txt, sitemap.xml).
+  app.use(createPagesRouter({ config, cache }));
+
   app.use(
     express.static(publicDir, {
-      index: 'index.html',
+      index: false,
       etag: true,
       maxAge: config.isProduction ? '1h' : 0,
       setHeaders(res, filePath) {

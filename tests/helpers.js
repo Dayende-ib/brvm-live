@@ -52,6 +52,7 @@ function fakeCache(overrides = {}) {
       source: 'cache',
       ...overrides
     }),
+    peek: () => ({ data: FIXTURE, updatedAt: Date.now(), ageMs: 0, stale: false }),
     status: () => ({
       present: true,
       updatedAt: Date.now(),
