@@ -26,7 +26,8 @@ function start() {
     scraper: scraper.scrape,
     logger,
     ttlMs: config.cacheTtlMs,
-    maxStaleMs: config.cacheMaxStaleMs
+    maxStaleMs: config.cacheMaxStaleMs,
+    failureCooldownMs: config.scrapeFailureCooldownMs
   });
   const app = createApp({ config, db, cache, logger });
 
@@ -76,6 +77,9 @@ function start() {
       });
     });
 
+  // Rafraîchit le cache avant son expiration pour que les visiteurs n'attendent pas brvm.org.
+  const stopAutoRefresh = cache.startAutoRefresh();
+
   let shuttingDown = false;
   function shutdown(signal) {
     if (shuttingDown) return;
@@ -91,6 +95,7 @@ function start() {
     server.close((error) => {
       if (error) logger.error('Erreur lors de la fermeture du serveur', { error: error.message });
       clearInterval(cleanupTimer);
+      stopAutoRefresh();
       try {
         db.close();
       } catch (dbError) {

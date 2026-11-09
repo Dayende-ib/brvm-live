@@ -82,6 +82,8 @@ function createRateLimiters(config) {
     limit: signup,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    // Seules les inscriptions réussies comptent : une faute de saisie ne bloque pas l'utilisateur.
+    skipFailedRequests: true,
     keyGenerator: (req) => ipKeyGenerator(req.ip),
     handler: limitHandler('Trop de comptes créés depuis cette adresse, réessayez plus tard.', {
       html: true

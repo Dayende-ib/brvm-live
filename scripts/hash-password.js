@@ -29,5 +29,6 @@ const hash = hashPassword(password);
 
 console.log(hash);
 console.error('');
-console.error('Ajoutez cette ligne à votre fichier .env (sans guillemets) :');
-console.error(`ADMIN_PASSWORD_HASH=${hash}`);
+console.error('Ajoutez cette ligne à votre fichier .env (avec les apostrophes, pour que');
+console.error('Docker Compose n\'interprète pas les caractères $) :');
+console.error(`ADMIN_PASSWORD_HASH='${hash}'`);

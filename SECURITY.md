@@ -24,7 +24,18 @@ Réponse sous 48 h ouvrées. L'identité du rapporteur reste confidentielle.
 - Aucun compte par défaut : si `ADMIN_PASSWORD_HASH`/`ADMIN_PASSWORD` est absent,
   l'administration est désactivée.
 
-### 2. API
+### 2. Comptes utilisateurs
+
+- Mots de passe hachés avec **scrypt** (10 caractères minimum), hash factice en cas
+  d'identifiant inconnu pour ne pas révéler l'existence d'un compte par le temps de réponse.
+- Session stateless signée en HMAC-SHA256, cookie `HttpOnly`, `SameSite=Lax`, `Secure` en
+  production, 7 jours par défaut (`USER_SESSION_TTL_MS`).
+- Formulaires : vérification de l'en-tête `Origin` + jeton CSRF signé (cookie et champ caché).
+- API `/api/favoris` : jeton CSRF en double soumission (cookie + en-tête `X-CSRF-Token`).
+- Redirection après connexion limitée aux chemins locaux (pas de redirection ouverte).
+- Limites par IP : inscriptions réussies (5 / 15 min), échecs de connexion (15 / 15 min).
+
+### 3. API
 
 - Rate limiting : 60 requêtes / 15 min / IP en anonyme, 600 avec clé API.
 - Clés API optionnelles, comparées via SHA-256 et `timingSafeEqual` ; jamais stockées en base.
@@ -34,28 +45,28 @@ Réponse sous 48 h ouvrées. L'identité du rapporteur reste confidentielle.
 - CORS restreignable via `ALLOWED_ORIGINS`.
 - Requêtes SQL préparées uniquement (`node:sqlite`), aucune concaténation.
 
-### 3. En-têtes HTTP
+### 4. En-têtes HTTP
 
 - **Helmet** : CSP restrictive (`default-src 'self'`, pas d'inline), `X-Frame-Options`,
   `X-Content-Type-Options`, `Referrer-Policy`, `Cross-Origin-*`.
 - **HSTS** en production (`max-age=31536000; includeSubDomains`), à compléter par le proxy.
 - `X-Robots-Tag: noindex` et `Cache-Control: no-store` sur `/admin`.
 
-### 4. Compteur de visites
+### 5. Compteur de visites
 
 - Aucune IP ni User-Agent brut stocké.
 - HMAC-SHA256 tronqué avec un sel dérivé du jour : non corrélable entre jours.
 - Robots, `DNT` et `Sec-GPC` ignorés ; purge après 90 jours.
 - Aucun cookie de mesure d'audience.
 
-### 5. Exploitation
+### 6. Exploitation
 
 - Conteneur Docker **non-root**, système de fichiers **lecture seule** (hors volume de données),
   `cap_drop: ALL`, `no-new-privileges`, tmpfs pour `/tmp`.
 - Secrets uniquement via variables d'environnement / `.env` en `chmod 600`.
 - Logs JSON sur stdout, rotation par Docker ; pas d'écriture de logs dans le conteneur.
 - Healthcheck `/health` et arrêt propre sur `SIGTERM`/`SIGINT`.
-- Dépendances verrouillées (`package-lock.json` versionné) et `npm audit` en CI.
+- Dépendances verrouillées (`package-lock.json` versionné) et `npm audit --omit=dev --audit-level=high` en CI.
 
 ## Bonnes pratiques de déploiement
 
@@ -75,6 +86,8 @@ Réponse sous 48 h ouvrées. L'identité du rapporteur reste confidentielle.
 - Le scraping dépend de la structure HTML de brvm.org ; une refonte du site peut nécessiter
   une adaptation de `src/scraper.js` (les erreurs sont journalisées et le cache de secours prend le relais).
 - `API_KEYS_REQUIRED=true` coupe aussi l'accès de la page publique.
+- Les sessions sont stateless : la déconnexion efface le cookie mais ne révoque pas un jeton
+  déjà copié. Seul le changement de `SESSION_SECRET` invalide toutes les sessions.
 
 ## Procédure en cas d'incident
 

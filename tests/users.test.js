@@ -284,9 +284,10 @@ describe('Limitation des inscriptions', () => {
   after(() => ctx.cleanup());
 
   it('bloque après plusieurs créations depuis la même IP', async () => {
-    const agent = request.agent(ctx.app);
-
+    // Un agent neuf par tentative : après une inscription, l'agent est connecté
+    // et /inscription redirige vers /compte (pas de jeton CSRF dans la page).
     async function attempt(index) {
+      const agent = request.agent(ctx.app);
       const page = await agent.get('/inscription');
       const token = extractCsrf(page.text);
       return agent.post('/inscription').type('form').send({
@@ -301,5 +302,35 @@ describe('Limitation des inscriptions', () => {
     assert.equal((await attempt(1)).status, 303);
     assert.equal((await attempt(2)).status, 303);
     assert.equal((await attempt(3)).status, 429);
+  });
+
+  it('ne compte pas les inscriptions refusées', async () => {
+    const limited = createTestContext({ env: { RATE_LIMIT_SIGNUP: '1' } });
+    try {
+      const agent = request.agent(limited.app);
+      for (let index = 0; index < 3; index += 1) {
+        const page = await agent.get('/inscription');
+        const response = await agent.post('/inscription').type('form').send({
+          _csrf: extractCsrf(page.text),
+          username: 'x',
+          email: 'invalide',
+          password: 'court',
+          confirm: 'court'
+        });
+        assert.equal(response.status, 400);
+      }
+
+      const page = await agent.get('/inscription');
+      const ok = await agent.post('/inscription').type('form').send({
+        _csrf: extractCsrf(page.text),
+        username: 'apreserreurs',
+        email: 'apreserreurs@example.com',
+        password: PASSWORD,
+        confirm: PASSWORD
+      });
+      assert.equal(ok.status, 303);
+    } finally {
+      limited.cleanup();
+    }
   });
 });

@@ -23,6 +23,7 @@ const envSchema = z.object({
   CACHE_MAX_STALE_MS: z.coerce.number().int().min(0).default(24 * 60 * 60 * 1000),
   SCRAPE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10000),
   SCRAPE_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  SCRAPE_FAILURE_COOLDOWN_MS: z.coerce.number().int().min(0).default(60 * 1000),
 
   ALLOWED_ORIGINS: z.string().default(''),
   TRUST_PROXY: z.string().default('1'),
@@ -50,6 +51,8 @@ const envSchema = z.object({
   RATE_LIMIT_ACCOUNT: z.coerce.number().int().min(1).default(120)
 });
 
+const ADMIN_HASH_PATTERN = /^scrypt\$\d+\$\d+\$\d+\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/;
+
 function parseTrustProxy(value) {
   if (/^\d+$/.test(value)) return Number(value);
   if (value === 'true') return true;
@@ -65,7 +68,11 @@ function splitList(value) {
 }
 
 function loadConfig(env = process.env) {
-  const parsed = envSchema.safeParse(env);
+  // Une variable laissée vide dans .env (ex. `ADMIN_PASSWORD_HASH=`) équivaut à une variable absente.
+  const defined = Object.fromEntries(
+    Object.entries(env).filter(([, value]) => value !== undefined && String(value).trim() !== '')
+  );
+  const parsed = envSchema.safeParse(defined);
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `${issue.path.join('.') || 'env'}: ${issue.message}`)
@@ -104,6 +111,16 @@ function loadConfig(env = process.env) {
   if (cfg.ADMIN_PASSWORD && cfg.ADMIN_PASSWORD_HASH) {
     warnings.push('ADMIN_PASSWORD et ADMIN_PASSWORD_HASH sont tous deux définis : ADMIN_PASSWORD_HASH est prioritaire.');
   }
+  if (cfg.ADMIN_PASSWORD_HASH && !ADMIN_HASH_PATTERN.test(cfg.ADMIN_PASSWORD_HASH)) {
+    warnings.push(
+      "ADMIN_PASSWORD_HASH n'a pas le format attendu (scrypt$N$r$p$sel$hash) : la connexion admin échouera. " +
+        "Dans .env, entourez la valeur d'apostrophes pour que Docker Compose n'interprète pas les $ : " +
+        "ADMIN_PASSWORD_HASH='scrypt$...'"
+    );
+  }
+  if (isProduction && cfg.ADMIN_PASSWORD && !cfg.ADMIN_PASSWORD_HASH) {
+    warnings.push('ADMIN_PASSWORD (en clair) est utilisé en production : préférez ADMIN_PASSWORD_HASH.');
+  }
   if (!adminEnabled) {
     warnings.push("Aucun mot de passe admin configuré : l'interface /admin est désactivée.");
   }
@@ -125,6 +142,7 @@ function loadConfig(env = process.env) {
     cacheMaxStaleMs: cfg.CACHE_MAX_STALE_MS,
     scrapeTimeoutMs: cfg.SCRAPE_TIMEOUT_MS,
     scrapeRetries: cfg.SCRAPE_RETRIES,
+    scrapeFailureCooldownMs: cfg.SCRAPE_FAILURE_COOLDOWN_MS,
 
     allowedOrigins,
     trustProxy: parseTrustProxy(cfg.TRUST_PROXY),

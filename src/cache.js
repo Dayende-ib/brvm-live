@@ -1,16 +1,60 @@
-function createCoursCache({ db, scraper, logger, ttlMs, maxStaleMs, now = () => Date.now() }) {
+function createCoursCache({
+  db,
+  scraper,
+  logger,
+  ttlMs,
+  maxStaleMs,
+  failureCooldownMs = 60 * 1000,
+  now = () => Date.now()
+}) {
   let inflight = null;
+  let lastFailure = null;
 
-  async function refresh() {
-    const data = await scraper();
-    db.setCache('cours', data, now());
-    return data;
+  // Un seul scraping à la fois : les appels concurrents partagent la même promesse.
+  function refresh() {
+    if (!inflight) {
+      inflight = (async () => {
+        try {
+          const data = await scraper();
+          const updatedAt = now();
+          db.setCache('cours', data, updatedAt);
+          lastFailure = null;
+          return { data, updatedAt };
+        } catch (error) {
+          lastFailure = { at: now(), error };
+          throw error;
+        }
+      })().finally(() => {
+        inflight = null;
+      });
+    }
+    return inflight;
+  }
+
+  // Après un échec, on attend failureCooldownMs avant de solliciter à nouveau brvm.org.
+  function inCooldown() {
+    return Boolean(lastFailure) && now() - lastFailure.at < failureCooldownMs;
+  }
+
+  function readRow() {
+    const row = db.getCache('cours');
+    const age = row ? now() - row.updatedAt : Number.POSITIVE_INFINITY;
+    return { row, age };
+  }
+
+  function staleResult(row, age, error) {
+    return {
+      data: row.value,
+      updatedAt: row.updatedAt,
+      ageMs: age,
+      stale: true,
+      source: 'stale',
+      error
+    };
   }
 
   async function get({ force = false } = {}) {
-    const row = db.getCache('cours');
-    const current = now();
-    const age = row ? current - row.updatedAt : Number.POSITIVE_INFINITY;
+    const { row, age } = readRow();
 
     if (!force && row && age < ttlMs) {
       return {
@@ -22,18 +66,17 @@ function createCoursCache({ db, scraper, logger, ttlMs, maxStaleMs, now = () => 
       };
     }
 
-    if (!inflight) {
-      inflight = refresh().finally(() => {
-        inflight = null;
-      });
+    if (!force && inCooldown()) {
+      if (row && age < maxStaleMs) return staleResult(row, age, lastFailure.error);
+      throw lastFailure.error;
     }
 
     try {
-      const data = await inflight;
+      const { data, updatedAt } = await refresh();
       return {
         data,
-        updatedAt: now(),
-        ageMs: 0,
+        updatedAt,
+        ageMs: Math.max(0, now() - updatedAt),
         stale: false,
         source: 'fresh'
       };
@@ -43,17 +86,36 @@ function createCoursCache({ db, scraper, logger, ttlMs, maxStaleMs, now = () => 
           ageMs: age,
           error: error.message
         });
-        return {
-          data: row.value,
-          updatedAt: row.updatedAt,
-          ageMs: age,
-          stale: true,
-          source: 'stale',
-          error
-        };
+        return staleResult(row, age, error);
       }
       throw error;
     }
+  }
+
+  // Rafraîchit en arrière-plan si la donnée expirera avant le prochain passage.
+  async function refreshIfDue({ thresholdMs = ttlMs } = {}) {
+    const { age } = readRow();
+    if (age < thresholdMs || inCooldown() || inflight) return false;
+
+    try {
+      const { data } = await refresh();
+      logger?.info('Cache rafraîchi en arrière-plan', { actions: data.actions?.length ?? 0 });
+      return true;
+    } catch (error) {
+      logger?.warn('Rafraîchissement en arrière-plan échoué', { error: error.message });
+      return false;
+    }
+  }
+
+  function startAutoRefresh({ intervalMs } = {}) {
+    if (!ttlMs) return () => {};
+    const every = intervalMs ?? Math.max(30 * 1000, Math.floor(ttlMs / 3));
+    const thresholdMs = Math.max(0, ttlMs - every);
+    const timer = setInterval(() => {
+      refreshIfDue({ thresholdMs });
+    }, every);
+    timer.unref();
+    return () => clearInterval(timer);
   }
 
   function status() {
@@ -68,7 +130,7 @@ function createCoursCache({ db, scraper, logger, ttlMs, maxStaleMs, now = () => 
     };
   }
 
-  return { get, status };
+  return { get, refreshIfDue, startAutoRefresh, status };
 }
 
 module.exports = { createCoursCache };

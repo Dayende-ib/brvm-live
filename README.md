@@ -9,14 +9,16 @@ existant (Nginx, Caddy…). Il ne dépend plus de Vercel.
 ## Fonctionnalités
 
 - Scraping robuste : timeout, retries, validation des données, détection des changements de structure.
-- Cache SQLite persistant (30 min par défaut) avec repli sur la dernière donnée valide jusqu'à 24 h.
+- Cache SQLite persistant (30 min par défaut), rafraîchi en arrière-plan avant expiration, avec
+  repli sur la dernière donnée valide jusqu'à 24 h et pause d'une minute après un échec de brvm.org.
 - API JSON et CSV, recherche par symbole, en-têtes de cache et de fraîcheur.
 - Documentation API intégrée sur `/api.html` (exemples cURL, JS, Python, Sheets, copiables).
 - Interface responsive : recherche instantanée, tri, résumé du marché, export CSV, actualisation automatique.
+- Comptes utilisateurs (inscription, connexion, page « Mon compte ») et actions favorites.
 - Compteur de visites respectueux de la vie privée (aucune IP brute stockée).
 - Administration protégée par mot de passe (scrypt, cookie signé HttpOnly/SameSite, CSRF).
 - Clés API optionnelles avec quotas supérieurs.
-- Rate limiting sur l'API, les visites et la connexion admin.
+- Rate limiting sur l'API, les visites, l'inscription et les connexions.
 - Healthcheck, arrêt propre, logs JSON sur stdout, conteneur Docker non-root.
 - Tests, ESLint et CI GitHub Actions.
 
@@ -33,10 +35,16 @@ src/
   security.js             scrypt, sessions signées, hachage IP, clés API
   logger.js               Winston (stdout)
   middleware/             auth, rate limiting, compteur de visites
-  routes/                 API publique et administration
+  routes/
+    api.js                API publique (/api/cours, /api/visites)
+    users.js              comptes, favoris (/inscription, /connexion, /compte, /api/session, /api/favoris)
+    admin.js              administration (/admin)
+  utils/html.js           échappement et formatage HTML
 public/                   interface (HTML/CSS/JS sans build)
+scripts/hash-password.js  génération du hash du mot de passe admin
 tests/                    tests node:test + supertest
 deploy/nginx.conf.example exemple de reverse proxy
+update-brvm.sh            mise à jour en un coup sur le VPS (git pull + rebuild + healthcheck)
 ```
 
 ## Démarrage local
@@ -59,9 +67,15 @@ ADMIN_PASSWORD=mot-de-passe-local
 `ADMIN_PASSWORD` en clair est accepté en développement (il est haché en mémoire au
 démarrage). En production, utilisez `ADMIN_PASSWORD_HASH`.
 
+Gardez `NODE_ENV=development` en local : en `production`, les cookies sont `Secure` et la
+connexion ne fonctionne pas sur `http://localhost`.
+
 ```bash
 npm run dev
 ```
+
+`npm run dev` et `npm start` chargent automatiquement `.env` (option `--env-file-if-exists`
+de Node). Les variables déjà définies dans l'environnement restent prioritaires.
 
 - Interface : <http://localhost:3000>
 - Administration : <http://localhost:3000/admin>
@@ -71,7 +85,8 @@ Les données (SQLite) sont créées dans `./data/`.
 
 ## Configuration
 
-Toutes les variables sont optionnelles sauf `SESSION_SECRET` en production.
+Toutes les variables sont optionnelles sauf `SESSION_SECRET` en production. Une variable
+laissée vide (`CLE=`) est traitée comme absente.
 
 | Variable | Défaut | Description |
 | --- | --- | --- |
@@ -83,6 +98,7 @@ Toutes les variables sont optionnelles sauf `SESSION_SECRET` en production.
 | `ADMIN_PASSWORD_HASH` | — | Hash scrypt généré par `npm run hash-password`. |
 | `ADMIN_PASSWORD` | — | Mot de passe en clair (développement uniquement). |
 | `SESSION_TTL_MS` | `28800000` | Durée de session admin (8 h). |
+| `USER_SESSION_TTL_MS` | `604800000` | Durée de session des comptes utilisateurs (7 jours). |
 | `API_KEYS` | — | Clés séparées par des virgules. |
 | `API_KEYS_REQUIRED` | `false` | Si `true`, `/api/*` exige une clé (voir avertissement plus bas). |
 | `ALLOWED_ORIGINS` | `*` | Origines CORS séparées par des virgules. |
@@ -92,16 +108,20 @@ Toutes les variables sont optionnelles sauf `SESSION_SECRET` en production.
 | `CACHE_MAX_STALE_MS` | `86400000` | Durée maximale du cache de secours (24 h). |
 | `SCRAPE_TIMEOUT_MS` | `10000` | Timeout par tentative. |
 | `SCRAPE_RETRIES` | `2` | Nombre de nouvelles tentatives. |
+| `SCRAPE_FAILURE_COOLDOWN_MS` | `60000` | Pause avant de retenter brvm.org après un échec (le cache de secours est servi entre-temps). |
 | `VISITS_RETENTION_DAYS` | `90` | Purge des visites plus anciennes. |
-| `RATE_LIMIT_*` | voir `.env.example` | Quotas par fenêtre de 15 min. |
+| `RATE_LIMIT_*` | voir `.env.example` | Quotas par fenêtre de 15 min (API, visites, admin, inscription, connexion, compte). |
 
-Générer le hash du mot de passe admin :
+Générer le hash du mot de passe admin (12 caractères minimum) :
 
 ```bash
 printf '%s' 'mon-mot-de-passe' | npm run hash-password
 ```
 
-Copiez la ligne `ADMIN_PASSWORD_HASH=...` affichée dans `.env`.
+Copiez la ligne `ADMIN_PASSWORD_HASH='...'` affichée dans `.env`, **apostrophes comprises** :
+le hash contient des `$` que Docker Compose interpréterait comme des variables sans elles
+(la connexion admin échouerait alors sans message clair). Au démarrage, l'application
+affiche un avertissement si le hash reçu n'a pas le format attendu.
 
 > `API_KEYS_REQUIRED=true` bloque **tous** les appels `/api/*`, y compris ceux de la page
 > publique. À réserver aux déploiements API privés. Pour un site public, laissez `false` :
@@ -184,6 +204,19 @@ curl -H "Authorization: Bearer $CLE" https://brvm.example.com/api/cours
 - Purge automatique après `VISITS_RETENTION_DAYS` (90 jours par défaut).
 - Aucun cookie de mesure d'audience n'est posé.
 
+## Comptes utilisateurs et favoris
+
+- Inscription sur `/inscription` (nom d'utilisateur, email, mot de passe de 10 caractères minimum),
+  connexion sur `/connexion` avec le nom d'utilisateur ou l'email.
+- Les étoiles du tableau des cours ajoutent ou retirent une action des favoris ; le filtre
+  « Mes favoris » et la page `/compte` les affichent avec leur cotation.
+- Mots de passe hachés avec scrypt ; session dans un cookie signé `HttpOnly`, `SameSite=Lax`
+  (`Secure` en production), valable 7 jours (`USER_SESSION_TTL_MS`).
+- Formulaires protégés par vérification d'origine et jeton CSRF ; l'API `/api/favoris` exige
+  l'en-tête `X-CSRF-Token` fourni par `/api/session`.
+- Inscriptions limitées par IP (seules les inscriptions réussies comptent), échecs de connexion
+  limités par IP.
+
 ## Administration
 
 `/admin` permet de consulter :
@@ -215,10 +248,13 @@ cp .env.example .env
 chmod 600 .env
 
 openssl rand -hex 32          # -> SESSION_SECRET
-printf '%s' 'mot-de-passe-admin' | npm run hash-password   # -> ADMIN_PASSWORD_HASH
+
+# -> ADMIN_PASSWORD_HASH (sans Node installé sur le VPS, via une image Node jetable)
+printf '%s' 'mot-de-passe-admin' | \
+  docker run --rm -i -v "$PWD":/app:ro -w /app node:24-alpine node scripts/hash-password.js
 ```
 
-Éditez `.env` avec ces valeurs, puis vérifiez que `ALLOWED_ORIGINS` contient votre domaine
+Éditez `.env` avec ces valeurs (hash entre apostrophes : `ADMIN_PASSWORD_HASH='scrypt$...'`), puis vérifiez que `ALLOWED_ORIGINS` contient votre domaine
 (ou laissez vide pour `*`).
 
 ### 3. Lancer
@@ -245,10 +281,27 @@ Le proxy doit transmettre `Host`, `X-Real-IP`, `X-Forwarded-For` et `X-Forwarded
 (déjà présents dans l'exemple). `TRUST_PROXY=1` permet à Express de lire correctement l'IP
 réelle et de sécuriser les cookies.
 
-### 5. Mises à jour
+Pour vérifier que le hash est arrivé intact dans le conteneur :
 
 ```bash
-git pull
+docker compose exec app printenv ADMIN_PASSWORD_HASH   # doit commencer par scrypt$16384$
+```
+
+### 5. Mises à jour
+
+Le script `update-brvm.sh` fait tout en une commande depuis le dossier du projet :
+
+```bash
+./update-brvm.sh
+```
+
+Il vérifie la présence de `.env`, fait un `git pull --ff-only`, reconstruit et redémarre le
+conteneur, nettoie les anciennes images puis attend que le healthcheck Docker passe à
+`healthy` (60 s max). En cas d'échec, il affiche les derniers logs et sort avec un code
+d'erreur. Équivalent manuel :
+
+```bash
+git pull --ff-only
 docker compose up -d --build
 docker image prune -f
 ```
