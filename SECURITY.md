@@ -59,12 +59,14 @@ Réponse sous 48 h ouvrées. L'identité du rapporteur reste confidentielle.
 - **HSTS** en production (`max-age=31536000; includeSubDomains`), à compléter par le proxy.
 - `X-Robots-Tag: noindex` et `Cache-Control: no-store` sur `/admin`.
 
-### 5. Compteur de visites
+### 5. Mesure d'audience
 
-- Aucune IP ni User-Agent brut stocké.
-- HMAC-SHA256 tronqué avec un sel dérivé du jour : non corrélable entre jours.
-- Robots, `DNT` et `Sec-GPC` ignorés ; purge après 90 jours.
-- Aucun cookie de mesure d'audience.
+- Aucune IP ni User-Agent brut stocké : le pays (base DB-IP locale, sans appel externe) et les
+  familles d'appareil, navigateur et système en sont déduits puis les valeurs brutes sont oubliées.
+- Source réduite au nom de domaine du site référent ; paramètres UTM normalisés (`[a-z0-9._-]`).
+- Visiteurs uniques : HMAC-SHA256 tronqué avec un sel dérivé du jour, non corrélable entre jours.
+- Robots, `DNT`, `Sec-GPC` et refus explicite (`/confidentialite`) ignorés ; purge après 90 jours.
+- Aucun cookie de mesure d'audience ; statistiques consultables uniquement en agrégé dans `/admin`.
 
 ### 6. Exploitation
 

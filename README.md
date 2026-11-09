@@ -40,6 +40,8 @@ src/
     users.js              comptes, favoris (/inscription, /connexion, /compte, /api/session, /api/favoris)
     admin.js              administration (/admin)
   utils/html.js           échappement et formatage HTML
+  analytics.js            mesure d'audience : source, pays (DB-IP), appareil (bowser)
+  history.js              historique : date de séance, performances, graphique SVG
   routes/pages.js         accueil, doc API, fiches actions, robots.txt, sitemap.xml (rendu serveur)
   seo.js                  balises <head>, JSON-LD, rendu du tableau
   views/                  modèles HTML de l'accueil et de la documentation API
@@ -238,14 +240,43 @@ Après la mise en ligne : définir `PUBLIC_URL`, déclarer le site dans
 - L'historique **commence au déploiement** de cette version : les graphiques apparaissent à partir
   de la deuxième séance enregistrée. Il est inclus dans la sauvegarde du volume SQLite.
 
-## Compteur de visites
+## Mesure d'audience
 
-- Compte les chargements de la page d'accueil (`GET /`, HTML uniquement).
-- Ignore les robots connus, `DNT: 1` et `Sec-GPC: 1`.
-- Ne stocke **jamais** l'IP ni le User-Agent : seul un HMAC tronqué `jour + IP + UA` est enregistré.
-- Le sel change chaque jour : impossible de relier un visiteur d'un jour à l'autre.
+Mesure maison, sans outil tiers, sur le modèle des solutions « sans consentement » (Plausible,
+Umami) : données anonymes, agrégées, sans cookie de mesure ni suivi d'un site à l'autre.
+
+**Pages mesurées** : accueil, documentation API, fiches actions et page de confidentialité
+(pas les pages de compte ni l'administration), réponses `2xx` uniquement.
+
+**Enregistré pour chaque page vue** ([src/analytics.js](src/analytics.js)) :
+
+| Donnée | Comment | Ce qui n'est **pas** stocké |
+| --- | --- | --- |
+| Source | `utm_source` si présent, sinon domaine du `Referer` classé (Google, Facebook, ChatGPT…), sinon « direct » | l'URL complète d'origine |
+| Campagne | `utm_medium`, `utm_campaign` réduits à `[a-z0-9._-]`, 50 caractères | tout texte libre |
+| Pays | code ISO déduit de l'IP via la base DB-IP *Country Lite* (locale, sans appel externe) | l'adresse IP |
+| Appareil, navigateur, système | familles seulement (« mobile », « Chrome », « Android ») via `bowser` | le User-Agent et les versions |
+| Visiteur unique | HMAC tronqué `jour + IP + UA` avec `SESSION_SECRET`, différent chaque jour | tout identifiant stable |
+
+- Ignorés : robots connus, `DNT: 1`, `Sec-GPC: 1`, et les visiteurs qui refusent la mesure sur
+  `/confidentialite` (cookie technique `brvm_no_stats`, 1 an).
+- La navigation interne (référent = le site lui-même) est exclue des statistiques de source.
 - Purge automatique après `VISITS_RETENTION_DAYS` (90 jours par défaut).
-- Aucun cookie de mesure d'audience n'est posé.
+
+**Dans l'administration** (`/admin`, section « Audience », sur 7, 30 ou 90 jours) : types de
+sources, sources, sites référents, campagnes, pays, appareils, navigateurs, systèmes et pages les
+plus vues, en visiteurs uniques et pages vues.
+
+**Bibliothèques** : [`maxmind`](https://www.npmjs.com/package/maxmind) (MIT) pour lire la base,
+[`@ip-location-db/dbip-country-mmdb`](https://www.npmjs.com/package/@ip-location-db/dbip-country-mmdb)
+(données DB-IP sous CC BY 4.0, attribution affichée sur l'admin et `/confidentialite`),
+[`bowser`](https://www.npmjs.com/package/bowser) (MIT). `ua-parser-js` a été écarté : sa
+version 2 est sous licence AGPL. Mettre à jour la base pays : `npm update @ip-location-db/dbip-country-mmdb`
+(publiée chaque mois).
+
+**Information des visiteurs** : la page `/confidentialite` (liée depuis le pied de page) décrit
+la mesure d'audience, les comptes, les cookies, les durées de conservation et les droits, et
+permet de refuser la mesure.
 
 ## Comptes utilisateurs et favoris
 

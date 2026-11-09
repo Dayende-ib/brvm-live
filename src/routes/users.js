@@ -181,7 +181,7 @@ function shell({ title, description, body, current, user, csrf, bodyClass = '' }
 
   <footer class="footer">
     <p>Compte BRVM Live · aucune donnée revendue.</p>
-    <p><a href="/">Retour aux cours</a> · <a href="/api.html">Documentation API</a></p>
+    <p><a href="/">Retour aux cours</a> · <a href="/api.html">Documentation API</a> · <a href="/confidentialite">Confidentialité</a></p>
   </footer>
 
   <script src="/session.js" defer></script>

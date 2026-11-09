@@ -56,8 +56,33 @@ const MIGRATIONS = [
     PRIMARY KEY (symbole, day)
   );
   CREATE INDEX idx_quotes_day ON quotes(day);
+  `,
+  `
+  ALTER TABLE visits ADD COLUMN source TEXT;
+  ALTER TABLE visits ADD COLUMN source_type TEXT;
+  ALTER TABLE visits ADD COLUMN referrer_host TEXT;
+  ALTER TABLE visits ADD COLUMN utm_medium TEXT;
+  ALTER TABLE visits ADD COLUMN utm_campaign TEXT;
+  ALTER TABLE visits ADD COLUMN country TEXT;
+  ALTER TABLE visits ADD COLUMN device TEXT;
+  ALTER TABLE visits ADD COLUMN browser TEXT;
+  ALTER TABLE visits ADD COLUMN os TEXT;
   `
 ];
+
+// Dimensions d'audience consultables dans l'administration. Liste fermée : ces noms de colonnes
+// sont insérés dans le SQL, ils ne doivent jamais venir de la requête HTTP.
+const AUDIENCE_DIMENSIONS = {
+  sources: { column: 'source', external: true },
+  types: { column: 'source_type', external: true },
+  referents: { column: 'referrer_host', external: true },
+  campagnes: { column: 'utm_campaign', external: true },
+  pays: { column: 'country', external: false },
+  appareils: { column: 'device', external: false },
+  navigateurs: { column: 'browser', external: false },
+  systemes: { column: 'os', external: false },
+  pages: { column: 'path', external: false }
+};
 
 function migrate(db) {
   const current = Number(db.prepare('PRAGMA user_version').get().user_version || 0);
@@ -90,9 +115,13 @@ function openDatabase(dataDir, logger) {
       INSERT INTO cache (key, value, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     `),
-    insertVisit: db.prepare(
-      'INSERT INTO visits (day, path, visitor_hash, created_at) VALUES (?, ?, ?, ?)'
-    ),
+    insertVisit: db.prepare(`
+      INSERT INTO visits (
+        day, path, visitor_hash, created_at,
+        source, source_type, referrer_host, utm_medium, utm_campaign,
+        country, device, browser, os
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `),
     totalVisits: db.prepare(`
       SELECT COUNT(*) AS vues,
              COUNT(DISTINCT day || ':' || visitor_hash) AS uniques
@@ -179,8 +208,76 @@ function openDatabase(dataDir, logger) {
     statements.setCache.run(key, JSON.stringify(value), updatedAt);
   }
 
-  function recordVisit({ day, path: visitPath, visitorHash, createdAt = Date.now() }) {
-    statements.insertVisit.run(day, visitPath, visitorHash, createdAt);
+  function recordVisit({
+    day,
+    path: visitPath,
+    visitorHash,
+    createdAt = Date.now(),
+    source = null,
+    sourceType = null,
+    referrerHost = null,
+    utmMedium = null,
+    utmCampaign = null,
+    country = null,
+    device = null,
+    browser = null,
+    os = null
+  }) {
+    statements.insertVisit.run(
+      day,
+      visitPath,
+      visitorHash,
+      createdAt,
+      source,
+      sourceType,
+      referrerHost,
+      utmMedium,
+      utmCampaign,
+      country,
+      device,
+      browser,
+      os
+    );
+  }
+
+  // Une requête préparée par dimension : visiteurs uniques (par jour) et pages vues.
+  // Pour les dimensions d'origine, la navigation interne au site est exclue.
+  const audienceStatements = Object.fromEntries(
+    Object.entries(AUDIENCE_DIMENSIONS).map(([name, { column, external }]) => [
+      name,
+      db.prepare(`
+        SELECT ${column} AS valeur,
+               COUNT(DISTINCT day || ':' || visitor_hash) AS visiteurs,
+               COUNT(*) AS vues
+        FROM visits
+        WHERE day >= ?${external ? " AND (source_type IS NULL OR source_type != 'internal')" : ''}
+        GROUP BY ${column}
+        ORDER BY visiteurs DESC, vues DESC
+        LIMIT ?
+      `)
+    ])
+  );
+
+  const audienceTotals = db.prepare(`
+    SELECT COUNT(DISTINCT day || ':' || visitor_hash) AS visiteurs, COUNT(*) AS vues
+    FROM visits
+    WHERE day >= ?
+  `);
+
+  function getAudienceBreakdown(sinceDay, limit = 10) {
+    const totals = audienceTotals.get(sinceDay);
+    const breakdown = {
+      visiteurs: Number(totals.visiteurs || 0),
+      vues: Number(totals.vues || 0)
+    };
+    for (const [name, statement] of Object.entries(audienceStatements)) {
+      breakdown[name] = statement.all(sinceDay, limit).map((row) => ({
+        valeur: row.valeur ?? null,
+        visiteurs: Number(row.visiteurs || 0),
+        vues: Number(row.vues || 0)
+      }));
+    }
+    return breakdown;
   }
 
   function getVisitSummary(day) {
@@ -328,6 +425,7 @@ function openDatabase(dataDir, logger) {
     getCache,
     setCache,
     recordVisit,
+    getAudienceBreakdown,
     getVisitSummary,
     getVisitSeries,
     deleteVisitsBefore,

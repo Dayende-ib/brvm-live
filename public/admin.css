@@ -32,3 +32,42 @@
 .admin-page table {
   font-size: 0.86rem;
 }
+
+/* Audience */
+.period-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.audience-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: var(--space-5) var(--space-6);
+  margin: var(--space-4) 0;
+}
+
+.audience-block h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 0.95rem;
+}
+
+.audience-list li {
+  grid-template-columns: minmax(0, 9rem) minmax(60px, 1fr) auto;
+}
+
+.audience-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .audience-list li {
+    grid-template-columns: minmax(0, 1fr) minmax(60px, 1fr);
+  }
+
+  .audience-list .bar-value {
+    grid-column: 1 / -1;
+  }
+}

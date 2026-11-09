@@ -5,6 +5,106 @@ const { todayUtc } = require('../middleware/visits');
 const { escapeHtml, formatDate, formatDuration } = require('../utils/html');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const AUDIENCE_PERIODS = [7, 30, 90];
+
+const regionNames = new Intl.DisplayNames(['fr'], { type: 'region' });
+const integer = new Intl.NumberFormat('fr-FR');
+
+const SOURCE_TYPES = {
+  direct: 'Accès direct',
+  search: 'Moteurs de recherche',
+  social: 'Réseaux sociaux',
+  ai: 'Assistants IA',
+  referral: 'Sites référents',
+  campaign: 'Campagnes (UTM)'
+};
+
+const DEVICES = { mobile: 'Mobile', desktop: 'Ordinateur', tablet: 'Tablette', tv: 'Télévision' };
+
+function flag(code) {
+  return String.fromCodePoint(...[...code].map((letter) => 0x1f1e6 + letter.charCodeAt(0) - 65));
+}
+
+function countryLabel(code) {
+  if (!code) return 'Inconnu';
+  try {
+    return `${flag(code)} ${regionNames.of(code) || code}`;
+  } catch {
+    return code;
+  }
+}
+
+const UNKNOWN = 'Non renseigné';
+
+const AUDIENCE_BLOCKS = [
+  { key: 'types', title: 'Types de sources', label: (value) => SOURCE_TYPES[value] || UNKNOWN },
+  { key: 'sources', title: 'Sources', label: (value) => (value === 'direct' ? 'Accès direct' : value || UNKNOWN) },
+  { key: 'pays', title: 'Pays', label: countryLabel },
+  { key: 'appareils', title: 'Appareils', label: (value) => DEVICES[value] || value || UNKNOWN },
+  { key: 'navigateurs', title: 'Navigateurs', label: (value) => value || UNKNOWN },
+  { key: 'systemes', title: 'Systèmes', label: (value) => value || UNKNOWN },
+  { key: 'pages', title: 'Pages les plus vues', label: (value) => value || UNKNOWN, metric: 'vues' },
+  { key: 'referents', title: 'Sites référents', label: (value) => value, skipEmpty: true },
+  { key: 'campagnes', title: 'Campagnes (utm_campaign)', label: (value) => value, skipEmpty: true }
+];
+
+function audienceBlock(block, rows) {
+  const metric = block.metric ?? 'visiteurs';
+  const visible = block.skipEmpty ? rows.filter((row) => row.valeur) : rows;
+  const max = Math.max(1, ...visible.map((row) => row[metric]));
+  const items = visible.length
+    ? visible
+        .map(
+          (row) => `
+          <li>
+            <span class="audience-label" title="${escapeHtml(block.label(row.valeur))}">${escapeHtml(block.label(row.valeur))}</span>
+            <progress value="${row[metric]}" max="${max}">${row[metric]}</progress>
+            <span class="bar-value">${integer.format(row.visiteurs)} visiteur(s) · ${integer.format(row.vues)} vue(s)</span>
+          </li>`
+        )
+        .join('')
+    : '<li class="muted small">Aucune donnée sur la période.</li>';
+  return `
+      <div class="audience-block">
+        <h3>${escapeHtml(block.title)}</h3>
+        <ul class="bar-list audience-list">${items}</ul>
+      </div>`;
+}
+
+function audienceSection({ db, period, retentionDays }) {
+  const since = new Date(Date.now() - (period - 1) * DAY_MS).toISOString().slice(0, 10);
+  const breakdown = db.getAudienceBreakdown(since, 10);
+  const links = AUDIENCE_PERIODS.map((days) =>
+    days === period
+      ? `<span class="btn btn-sm" aria-current="true">${days} jours</span>`
+      : `<a class="btn btn-ghost btn-sm" href="/admin?periode=${days}#audience">${days} jours</a>`
+  ).join(' ');
+
+  return `
+    <section class="panel" id="audience" aria-labelledby="audience-title">
+      <div class="panel-head">
+        <div>
+          <h2 id="audience-title">Audience</h2>
+          <p class="muted small">
+            ${integer.format(breakdown.visiteurs)} visiteur(s) unique(s) par jour cumulés ·
+            ${integer.format(breakdown.vues)} page(s) vue(s) depuis le ${escapeHtml(since)}.
+            Les sources excluent la navigation interne au site.
+          </p>
+        </div>
+        <nav class="period-links" aria-label="Période">${links}</nav>
+      </div>
+      <div class="audience-grid">
+        ${AUDIENCE_BLOCKS.map((block) => audienceBlock(block, breakdown[block.key] ?? [])).join('')}
+      </div>
+      <p class="muted small">
+        Données anonymes : ni IP, ni User-Agent, ni cookie de mesure ne sont conservés ; les visiteurs
+        ayant activé « Do Not Track », « Global Privacy Control » ou refusé la mesure sur
+        <a href="/confidentialite">/confidentialite</a> ne sont pas comptés. Conservation :
+        ${retentionDays} jours.
+        Géolocalisation : <a href="https://db-ip.com" target="_blank" rel="noopener noreferrer">IP Geolocation by DB-IP</a>.
+      </p>
+    </section>`;
+}
 
 function fillSeries(series, days = 30) {
   const byDay = new Map(series.map((row) => [row.jour, row]));
@@ -75,7 +175,7 @@ function metricCard(label, value, detail = '') {
     </article>`;
 }
 
-function adminPage({ config, cache, db, message, csrf: rawCsrf }) {
+function adminPage({ config, cache, db, message, csrf: rawCsrf, period = 30 }) {
   const status = cache.status();
   const day = todayUtc();
   const summary = db.getVisitSummary(day);
@@ -172,6 +272,8 @@ function adminPage({ config, cache, db, message, csrf: rawCsrf }) {
       </details>
     </section>
 
+    ${audienceSection({ db, period, retentionDays: config.visitsRetentionDays })}
+
     <section class="panel">
       <h2>Système et configuration</h2>
       <dl class="details-grid">
@@ -245,12 +347,15 @@ function createAdminRouter({ config, cache, db, session, authCsrf, logger, limit
 
   router.get('/', (req, res) => {
     const message = typeof req.query.refresh === 'string' ? req.query.refresh : '';
+    const requested = Number(req.query.periode);
+    const period = AUDIENCE_PERIODS.includes(requested) ? requested : 30;
     return res.status(200).type('html').send(
       adminPage({
         config,
         cache,
         db,
         message,
+        period,
         // Jeton CSRF signé et indépendant du cookie de session (qui ne doit jamais finir dans le HTML).
         csrf: authCsrf.ensure(req, res)
       })

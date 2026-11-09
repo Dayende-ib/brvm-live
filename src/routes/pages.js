@@ -5,6 +5,115 @@ const express = require('express');
 const { escapeHtml, formatDuration } = require('../utils/html');
 const seo = require('../seo');
 const { performance, priceChart, formatDay } = require('../history');
+const { verifySameOrigin } = require('../middleware/auth');
+const { OPT_OUT_COOKIE } = require('../middleware/visits');
+
+const CONTACT_EMAIL = 'Dayende.ib@gmail.com';
+const OPT_OUT_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+function privacyPage({ config, optedOut, notice }) {
+  const days = config.visitsRetentionDays;
+  const alert =
+    notice === 'refusee'
+      ? '<div class="alert alert-success" role="status">C’est noté : vos visites ne sont plus mesurées sur ce navigateur.</div>'
+      : notice === 'acceptee'
+        ? '<div class="alert alert-success" role="status">Merci : la mesure d’audience est réactivée sur ce navigateur.</div>'
+        : '';
+
+  return `
+    <section class="hero">
+      <p class="eyebrow">Vos données</p>
+      <h1>Confidentialité</h1>
+      <p class="lede">Ce que BRVM Live collecte, pourquoi, combien de temps, et comment vous y opposer.</p>
+    </section>
+
+    <section class="panel prose" aria-labelledby="responsable-title">
+      <h2 id="responsable-title">Responsable du traitement</h2>
+      <p>
+        BRVM Live est édité par Dayende. Pour toute question ou pour exercer vos droits :
+        <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. Aucune donnée n’est vendue, louée ni
+        partagée avec des annonceurs ; le site n’utilise aucun outil de suivi tiers.
+      </p>
+    </section>
+
+    <section class="panel prose" id="mesure" aria-labelledby="mesure-title">
+      <h2 id="mesure-title">Mesure d’audience</h2>
+      ${alert}
+      <p>
+        Pour savoir combien de personnes consultent le site et d’où elles viennent, nous enregistrons
+        pour chaque page vue : la page, le jour, la <strong>source</strong> (accès direct, nom du site
+        ou du moteur de recherche d’origine, paramètres de campagne <code>utm_*</code>), le
+        <strong>pays</strong> déduit de l’adresse IP, et la <strong>famille</strong> d’appareil,
+        de navigateur et de système (par exemple « Mobile, Chrome, Android »).
+      </p>
+      <p>
+        Nous ne conservons <strong>ni l’adresse IP, ni l’identifiant complet du navigateur, ni l’adresse
+        exacte de la page d’origine</strong>, et ne déposons aucun cookie de mesure. Pour compter les
+        visiteurs uniques, une empreinte chiffrée et tronquée est calculée à partir de l’IP et du navigateur
+        avec une clé secrète ; elle change chaque jour et ne permet ni de vous identifier ni de vous
+        suivre d’un jour à l’autre. Ces données sont consultées uniquement sous forme de statistiques
+        agrégées et supprimées après <strong>${days} jours</strong>.
+      </p>
+      <p>
+        Les visites ne sont pas mesurées si votre navigateur envoie le signal « Do Not Track » ou
+        « Global Privacy Control », ni si vous refusez ci-dessous.
+      </p>
+      <form method="post" action="/confidentialite/mesure" class="inline-form">
+        <input type="hidden" name="choix" value="${optedOut ? 'accepter' : 'refuser'}">
+        <p>
+          État sur ce navigateur : <strong>${optedOut ? 'mesure refusée' : 'mesure active'}</strong>.
+          <button class="btn ${optedOut ? '' : 'btn-ghost'} btn-sm" type="submit">
+            ${optedOut ? 'Réactiver la mesure' : 'Refuser la mesure d’audience'}
+          </button>
+        </p>
+      </form>
+      <p class="muted small">
+        Le refus est mémorisé par un cookie technique (<code>${OPT_OUT_COOKIE}</code>, 1 an), qui ne contient
+        aucune donnée personnelle. Géolocalisation du pays :
+        <a href="https://db-ip.com" target="_blank" rel="noopener noreferrer">IP Geolocation by DB-IP</a>.
+      </p>
+    </section>
+
+    <section class="panel prose" aria-labelledby="comptes-title">
+      <h2 id="comptes-title">Comptes utilisateurs</h2>
+      <p>
+        La création d’un compte est facultative. Nous conservons votre nom d’utilisateur, votre adresse
+        email, votre mot de passe sous forme chiffrée (scrypt, jamais en clair), vos actions favorites et
+        les dates de création et de dernière connexion. Ces données servent uniquement à faire fonctionner
+        votre compte ; l’adresse email n’est utilisée pour aucun envoi commercial.
+      </p>
+      <p>
+        Elles sont conservées tant que le compte existe. Vous pouvez changer de mot de passe, fermer vos
+        sessions ouvertes ou <strong>supprimer définitivement votre compte</strong> à tout moment depuis
+        <a href="/compte#securite">Mon compte</a>.
+      </p>
+    </section>
+
+    <section class="panel prose" aria-labelledby="cookies-title">
+      <h2 id="cookies-title">Cookies</h2>
+      <p>Le site n’utilise que des cookies techniques, nécessaires à son fonctionnement :</p>
+      <ul>
+        <li><code>brvm_user</code> : maintient votre connexion (si vous avez un compte).</li>
+        <li><code>brvm_csrf</code> : protège les formulaires contre les requêtes frauduleuses.</li>
+        <li><code>brvm_admin</code> : session de l’administrateur du site.</li>
+        <li><code>${OPT_OUT_COOKIE}</code> : mémorise votre refus de la mesure d’audience.</li>
+      </ul>
+    </section>
+
+    <section class="panel prose" aria-labelledby="droits-title">
+      <h2 id="droits-title">Vos droits</h2>
+      <p>
+        Vous disposez d’un droit d’accès, de rectification, d’effacement et d’opposition sur vos données.
+        Écrivez à <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> ; nous répondons sous 30 jours.
+        Vous pouvez aussi saisir l’autorité de protection des données de votre pays (par exemple la CIL
+        au Burkina Faso, l’ARTCI en Côte d’Ivoire ou la CDP au Sénégal).
+      </p>
+      <p class="muted small">
+        Les données de mesure d’audience étant anonymes et non reliables à une personne, elles ne peuvent
+        pas être retrouvées individuellement pour une demande d’accès.
+      </p>
+    </section>`;
+}
 
 const VIEWS_DIR = path.join(__dirname, '..', 'views');
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
@@ -65,7 +174,7 @@ function layout({ head, body }) {
       <p>
         Données indicatives, pas un conseil en investissement. Source :
         <a href="${seo.SOURCE_URL}" target="_blank" rel="noopener noreferrer">brvm.org</a>
-        · <a href="/api.html">Documentation API</a>.
+        · <a href="/api.html">Documentation API</a> · <a href="/confidentialite">Confidentialité</a>.
       </p>
       <p>Par <a href="https://ibrahimdayende.me" target="_blank" rel="noopener noreferrer">Dayende</a></p>
     </footer>
@@ -421,6 +530,41 @@ function createPagesRouter({ config, cache, db }) {
         })
       })
     );
+  });
+
+  router.get('/confidentialite', (req, res) => {
+    const baseUrl = seo.siteUrl(config, req);
+    const head = seo.headTags({
+      title: 'Confidentialité et données personnelles | BRVM Live',
+      description:
+        'Données collectées par BRVM Live (mesure d’audience anonyme, comptes), durée de conservation, ' +
+        'cookies et exercice de vos droits.',
+      url: `${baseUrl}/confidentialite`
+    });
+    const notice = typeof req.query.mesure === 'string' ? req.query.mesure : '';
+    return sendHtml(
+      res,
+      200,
+      layout({
+        head,
+        body: privacyPage({ config, optedOut: req.cookies?.[OPT_OUT_COOKIE] === '1', notice })
+      })
+    );
+  });
+
+  router.post('/confidentialite/mesure', verifySameOrigin, (req, res) => {
+    const options = {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: config.isProduction,
+      path: '/'
+    };
+    if (req.body?.choix === 'accepter') {
+      res.clearCookie(OPT_OUT_COOKIE, options);
+      return res.redirect(303, '/confidentialite?mesure=acceptee#mesure');
+    }
+    res.cookie(OPT_OUT_COOKIE, '1', { ...options, maxAge: OPT_OUT_MAX_AGE_MS });
+    return res.redirect(303, '/confidentialite?mesure=refusee#mesure');
   });
 
   router.get('/robots.txt', (req, res) => {
